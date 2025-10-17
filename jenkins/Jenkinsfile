@@ -78,21 +78,22 @@ pipeline {
 
                 // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
                 // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
+                // 1. Create the deploy.sh script locally
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
 # Jenkins will pass the IMAGE_TAG as the first argument (\$1)
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# Log into ECR using absolute paths
-\$(/usr/local/bin/aws ecr get-login-password --region ${env.AWS_REGION}) | /usr/bin/docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+# Log into ECR (Using simple command names)
+\$(aws ecr get-login-password --region ${env.AWS_REGION}) | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
-/usr/bin/docker stop web-app-container || true
-/usr/bin/docker rm web-app-container || true
+docker stop web-app-container || true
+docker rm web-app-container || true
 
 # Run the new container
-/usr/bin/docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
+docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
                 }
 
@@ -101,13 +102,14 @@ IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
+                    
+                    // 2. Copy the deploy.sh script to the EC2 host
+                    // Using the recommended SECURE connection: NO host key bypass.
+                    sh "scp -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 2. Copy the deploy.sh script to the EC2 host (No change needed)
-                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
-
-                    // 3. Execute the deployment script remotely (Simplified command)
-                    // The script will now run successfully because all commands are absolute paths.
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
+                    // 3. Execute the deployment script remotely
+                    // FIX: Using 'bash -lc' with corrected quotes to load the full environment (PATH and AWS IAM role credentials).
+                    sh "ssh -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
