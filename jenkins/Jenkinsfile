@@ -2,6 +2,7 @@
 // Jenkins Pipeline for CI/CD of abc-college-web-app
 // FIX: Corrected missing closing brace/curly bracket error for Groovy parser.
 // FIX: Changed 'sh' to 'bat' for commands running on the Windows Jenkins agent.
+// FIX: Replaced unstable 'sshagent' block with 'withCredentials' to fix the StringIndexOutOfBoundsException.
 // -----------------------------------------------------------------------------
 pipeline {
     agent any
@@ -73,21 +74,24 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
-                echo "Deploying to EC2 host: ${WEB_APP_HOST_IP}"
+                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
                 
-                // Use sshagent for robust key handling
-                sshagent(credentials: [env.WEB_APP_HOST_SSH_CREDENTIAL_ID]) {
+                // FIX: Replaced unstable 'sshagent' with 'withCredentials'. 
+                // This injects the key path ('SSH_KEY_PATH') and username ('SSH_USER') 
+                // for explicit use with 'scp' and 'ssh'.
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
+                    keyFileVariable: 'SSH_KEY_PATH', 
+                    usernameVariable: 'SSH_USER'
+                )]) {
 
-                    // These steps use external tools (scp, ssh) which usually work 
-                    // on Windows if they are in the PATH (e.g., via Git for Windows), 
-                    // so we will test 'sh' one more time, as 'bat' syntax can be tricky 
-                    // for these specific commands. If they fail, we will swap to 'bat'.
-                    
                     // 1. Copy the deploy.sh script to the EC2 host
-                    sh "scp deploy.sh ${WEB_APP_HOST_USER}@${WEB_APP_HOST_IP}:/home/${WEB_APP_HOST_USER}/deploy.sh"
+                    // We now use the -i flag with the temporary key file path
+                    sh "scp -i \"\${SSH_KEY_PATH}\" deploy.sh \${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/\${SSH_USER}/deploy.sh"
 
                     // 2. Execute the deployment script remotely
-                    sh "ssh ${WEB_APP_HOST_USER}@${WEB_APP_HOST_IP} 'sudo chmod +x /home/${WEB_APP_HOST_USER}/deploy.sh && /home/${WEB_APP_HOST_USER}/deploy.sh'"
+                    // We also use the -i flag with the temporary key file path
+                    sh "ssh -i \"\${SSH_KEY_PATH}\" \${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/\${SSH_USER}/deploy.sh && /home/\${SSH_USER}/deploy.sh'"
                 }
                 echo "Deployment command sent successfully."
             }
