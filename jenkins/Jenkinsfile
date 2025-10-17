@@ -1,19 +1,19 @@
 // -----------------------------------------------------------------------------
 // Jenkins Pipeline for CI/CD of abc-college-web-app
-// REVISED: Using usernamePassword binding for robust AWS credential handling.
+// FIX: Corrected missing closing brace/curly bracket error for Groovy parser.
 // -----------------------------------------------------------------------------
 pipeline {
     agent any
 
     environment {
-        // AWS ECR Settings (change to your specific values if they differ)
+        // AWS ECR Settings 
         AWS_REGION      = 'ap-south-1'
         AWS_ACCOUNT_ID  = '708972351530'
         ECR_REPOSITORY  = 'abc-college-web-app'
         IMAGE_TAG       = "latest"
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
-        // EC2 Host Settings (change the IP to your public IP)
+        // EC2 Host Settings 
         WEB_APP_HOST_IP = '15.207.18.241'
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
@@ -37,18 +37,15 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 script {
-                    // *** REVISED CREDENTIALS BINDING ***
-                    // We use usernamePassword binding which is very reliable for binding
-                    // 'AWS Credentials' type objects to standard environment variables.
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
-                            usernameVariable: 'AWS_ACCESS_KEY_ID', // Automatically sets environment variable
-                            passwordVariable: 'AWS_SECRET_ACCESS_KEY' // Automatically sets environment variable
+                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                         )
                     ]) {
                         
-                        // 1. Authenticate Docker with ECR (AWS CLI reads environment variables automatically)
+                        // 1. Authenticate Docker with ECR
                         echo 'Authenticating Docker with ECR...'
                         sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
@@ -72,16 +69,17 @@ pipeline {
             steps {
                 echo "Deploying to EC2 host: ${WEB_APP_HOST_IP}"
                 
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID,
-                    keyFileVariable: 'KEY_FILE',
-                    usernameVariable: 'SSH_USER'
-                )]) {
-                    // Transfer the deploy script to the host (in case it changes)
-                    sh "scp -i \${KEY_FILE} deploy.sh \${SSH_USER}@${WEB_APP_HOST_IP}:/home/${WEB_APP_HOST_USER}/deploy.sh"
+                // Use sshagent for robust key handling
+                sshagent(credentials: [env.WEB_APP_HOST_SSH_CREDENTIAL_ID]) {
 
-                    // Execute the deployment script remotely
-                    sh "ssh -i \${KEY_FILE} \${SSH_USER}@${WEB_APP_HOST_IP} 'sudo chmod +x /home/${WEB_APP_HOST_USER}/deploy.sh && /home/${WEB_APP_HOST_USER}/deploy.sh'"
+                    // 1. Copy the deploy.sh script to the EC2 host
+                    sh "scp deploy.sh ${WEB_APP_HOST_USER}@${WEB_APP_HOST_IP}:/home/${WEB_APP_HOST_USER}/deploy.sh"
+
+                    // 2. Execute the deployment script remotely
+                    sh "ssh ${WEB_APP_HOST_USER}@${WEB_APP_HOST_IP} 'sudo chmod +x /home/${WEB_APP_HOST_USER}/deploy.sh && /home/${WEB_APP_HOST_USER}/deploy.sh'"
                 }
                 echo "Deployment command sent successfully."
             }
+        }
+    }
+}
