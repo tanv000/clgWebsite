@@ -13,7 +13,7 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ⚠️ CRITICAL: REPLACE THIS WITH THE NEW IP FROM 'terraform apply' OUTPUT ⚠️
+        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
         WEB_APP_HOST_IP = '52.66.116.64' 
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
@@ -30,7 +30,7 @@ pipeline {
 
         stage('Build & Test (Optional)') {
             steps {
-                // CHANGED: Use 'bat' for Windows agent
+                // Using 'bat' for Windows agent
                 bat 'echo "Skipping formal build/test for this project"'
             }
         }
@@ -48,22 +48,22 @@ pipeline {
                         
                         // 1. Authenticate Docker with ECR
                         echo 'Authenticating Docker with ECR...'
-                        // CHANGED: Use 'bat' for Windows agent
+                        // Using 'bat' for Windows agent
                         bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
                         // 2. Build the Docker Image
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                        // CHANGED: Use 'bat' for Windows agent
+                        // Using 'bat' for Windows agent
                         bat "docker build -t ${ECR_REPOSITORY} ."
                         
                         // 3. Tag the image for ECR
                         echo "Tagging image..."
-                        // CHANGED: Use 'bat' for Windows agent
+                        // Using 'bat' for Windows agent
                         bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
                         // 4. Push the image to ECR
                         echo "Pushing image to ECR..."
-                        // CHANGED: Use 'bat' for Windows agent
+                        // Using 'bat' for Windows agent
                         bat "docker push ${FULL_IMAGE_NAME}"
                     }
                 }
@@ -81,12 +81,17 @@ pipeline {
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# Login succeeds because of the attached IAM Role
-\$(aws ecr get-login-password --region ${env.AWS_REGION}) | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+# 🛑 CRITICAL FIX APPLIED HERE:
+# The command substitution is wrapped entirely to ensure the token is piped 
+# to 'docker login' and not executed as a command itself.
+\$(aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL)
 
 # Stop and remove the old container
 docker stop web-app-container || true
 docker rm web-app-container || true
+
+# Pull the latest image from ECR
+docker pull \$IMAGE_REPO_URL:\$IMAGE_TAG
 
 # Run the new container
 docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
@@ -99,10 +104,11 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     usernameVariable: 'SSH_USER'
                 )]) {
                     
-                    // SCP command
+                    // SCP command to transfer the script
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // SSH command (FIX: 'bash -lc' forces the loading of .bashrc, which contains the PATH fix)
+                    // SSH command to execute the script
+                    // 'bash -lc' is used to source the .bashrc file, ensuring AWS CLI and Docker are in PATH
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
