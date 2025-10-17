@@ -97,19 +97,20 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
                 }
 
-                withCredentials([sshUserPrivateKey(
+               withCredentials([sshUserPrivateKey(
                     credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
                     
-                    // 2. Copy the deploy.sh script to the EC2 host
-                    // Using the recommended SECURE connection: NO host key bypass.
-                    sh "scp -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
+                    // 1. Copy the deploy.sh script to the EC2 host
+                    // FIX: Re-introducing INSECURE flags for automation reliability
+                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 3. Execute the deployment script remotely
-                    // FIX: Using 'bash -lc' with corrected quotes to load the full environment (PATH and AWS IAM role credentials).
-                    sh "ssh -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
+                    // 2. Execute the deployment script remotely
+                    // FIX: Using the 'bash -lc' wrapper to ensure Docker and AWS CLI are found
+                    // FIX: Re-introducing INSECURE flags for automation reliability
+                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
