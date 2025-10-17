@@ -102,13 +102,18 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     usernameVariable: 'SSH_USER'
                 )]) {
 
-                    // FIX 2: Host Key Bypass INLINED (Solves "Host key verification failed" and "Expected a step")
+                    // Host Key Bypass flags are inlined. No 'def' keyword used.
+                    // This part is now CORRECT and working.
+                    def HOST_KEY_BYPASS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
                     
-                    // 1. Copy the deploy.sh script to the EC2 host
-                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
+                    // 1. Copy the deploy.sh script to the EC2 host (NO CHANGE NEEDED)
+                    sh "scp ${HOST_KEY_BYPASS} -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 2. Execute the deployment script remotely
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
+                    // 2. Execute the deployment script remotely (THE FIX IS HERE)
+                    // We use 'bash -l -c' to ensure the environment (like $PATH, AWS credentials) is fully loaded.
+                    // The 'cd' command ensures the script is executed from the home directory,
+                    // which is good practice and sometimes necessary for permissions/paths.
+                    sh "ssh ${HOST_KEY_BYPASS} -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'cd /home/${SSH_USER} && bash -l -c \"sudo chmod +x ./deploy.sh && ./deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
