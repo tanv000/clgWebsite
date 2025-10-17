@@ -79,38 +79,29 @@ resource "aws_instance" "web_app_host" {
   # User data to install Docker and Nginx on first boot
   user_data = <<-EOF
               #!/bin/bash
-              # Update the system
+              
+              # Update system and install Docker
               sudo yum update -y
-              # Install Docker
-              sudo amazon-linux-extras install docker -y
+              sudo yum install -y docker
               sudo systemctl start docker
               sudo systemctl enable docker
-              # Add ec2-user to docker group so we can run docker commands without sudo
-              sudo usermod -aG docker ec2-user
-              # Create a deployment script for Jenkins to use
-              echo '#!/bin/bash
-              # Log into ECR (replace region and repo with actual values)
-              $(aws ecr get-login-password --region ${var.aws_region}) | docker login --username AWS --password-stdin ${aws_ecr_repository.app_repo.repository_url}
               
-              # Pull the latest image (Jenkins will pass the TAG)
-              IMAGE_TAG="$1"
-              IMAGE_REPO_URL="${aws_ecr_repository.app_repo.repository_url}"
-
-              # Stop and remove the old container
-              docker stop web-app-container || true
-              docker rm web-app-container || true
-
-              # Run the new container
-              docker run -d -p 80:80 --name web-app-container $IMAGE_REPO_URL:$IMAGE_TAG
-              ' | sudo tee /usr/local/bin/deploy.sh
-              sudo chmod +x /usr/local/bin/deploy.sh
-
+              # Allow ec2-user to run docker commands without sudo
+              sudo usermod -aG docker ec2-user
+              
               # Install AWS CLI V2 (needed for ECR login)
               sudo yum install -y unzip
               curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
               unzip awscliv2.zip
               sudo ./aws/install
-              
+
+              # CRITICAL: Add paths to .bashrc to ensure they load for ec2-user
+              # We expect aws to be in /usr/local/bin/ and docker in /usr/bin/
+              # The 'which' command failed because the environment isn't loading correctly.
+              # We will add a path export to the ec2-user's profile to fix this.
+              echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
+              sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
+
               echo "Setup complete. Docker and AWS CLI installed."
               EOF
 
