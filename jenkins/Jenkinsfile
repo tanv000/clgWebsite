@@ -14,7 +14,7 @@ pipeline {
 
         // EC2 Host Settings 
         // ⚠️ CRITICAL: REPLACE THIS WITH THE NEW IP FROM 'terraform apply' OUTPUT ⚠️
-        WEB_APP_HOST_IP = '35.154.59.115' 
+        WEB_APP_HOST_IP = '52.66.116.64' 
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
