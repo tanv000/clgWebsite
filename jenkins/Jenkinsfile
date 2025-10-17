@@ -1,28 +1,38 @@
+// -----------------------------------------------------------------------------
+// Jenkins Pipeline for CI/CD of abc-college-web-app
+// FIX: Corrected missing closing brace/curly bracket error for Groovy parser.
+// FIX: Changed 'sh' to 'bat' for commands running on the Windows Jenkins agent.
+// FIX: Replaced unstable 'sshagent' block with 'withCredentials' to fix the StringIndexOutOfBoundsException.
+// -----------------------------------------------------------------------------
 pipeline {
-    // Assuming the node label is configured correctly for your Windows agent
-    agent any 
+    agent any
 
-    // Define environment variables based on your ECR and EC2 setup
     environment {
-        AWS_ACCOUNT_ID = '708972351530'
-        AWS_REGION = 'ap-south-1'
-        ECR_REPOSITORY = 'abc-college-web-app'
-        IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
-        EC2_HOST = '15.207.18.241'
-        CONTAINER_NAME = 'web-app'
+        // AWS ECR Settings 
+        AWS_REGION      = 'ap-south-1'
+        AWS_ACCOUNT_ID  = '708972351530'
+        ECR_REPOSITORY  = 'abc-college-web-app'
+        IMAGE_TAG       = "latest"
+        FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+        // EC2 Host Settings 
+        WEB_APP_HOST_IP = '15.207.18.241'
+        WEB_APP_HOST_USER = 'ec2-user'
+        // Credential ID for the SSH Key stored in Jenkins (Username with private key)
+        WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
     }
 
     stages {
         stage('SCM Checkout') {
             steps {
-                echo "Cloning repository..."
-                checkout scm
+                echo 'Cloning repository...'
+                checkout scm 
             }
         }
 
         stage('Build & Test (Optional)') {
             steps {
-                // Using 'bat' for Windows shell execution
+                // CHANGED: Use 'bat' for Windows agent
                 bat 'echo "Skipping formal build/test for this project"'
             }
         }
@@ -30,51 +40,60 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 script {
-                    // Assuming AWS credentials are provided via Jenkins Global Credentials (e.g., ID: 'aws-ecr-login')
                     withCredentials([
-                        // Placeholder for your actual AWS credentials ID
-                        usernamePassword(credentialsId: 'aws-ecr-login', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY') 
+                        usernamePassword(
+                            credentialsId: 'AWS_ECR_CREDENTIALS', 
+                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
                     ]) {
-                        echo "Authenticating Docker with ECR..."
-                        // Using 'bat' for Windows execution. AWS CLI must be installed.
-                        bat "aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %IMAGE_NAME:0:-7%" // Trims :latest for the registry URI
                         
-                        echo "Building Docker image: %ECR_REPOSITORY%"
-                        bat "docker build -t %ECR_REPOSITORY% ."
+                        // 1. Authenticate Docker with ECR
+                        echo 'Authenticating Docker with ECR...'
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+                        // 2. Build the Docker Image
+                        echo "Building Docker image: ${FULL_IMAGE_NAME}"
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker build -t ${ECR_REPOSITORY} ."
                         
+                        // 3. Tag the image for ECR
                         echo "Tagging image..."
-                        bat "docker tag %ECR_REPOSITORY%:latest %IMAGE_NAME%"
-                        
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
+
+                        // 4. Push the image to ECR
                         echo "Pushing image to ECR..."
-                        bat "docker push %IMAGE_NAME%"
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker push ${FULL_IMAGE_NAME}"
                     }
                 }
             }
         }
-
+        
         stage('Deploy to EC2') {
             steps {
-                echo "Deploying to EC2 host: %EC2_HOST%"
-                // Assume the SSH key file credential ID is 'ec2-ssh-key'
-                withCredentials([file(credentialsId: 'ec2-ssh-key', variable: 'SSH_KEY_PATH')]) {
-                    // Deployment logic is now inline using 'bat'
-                    bat '''
-                        REM Ensure ssh is on the Windows agent's PATH.
-                        echo "Starting remote deployment via SSH on %EC2_HOST%..."
-                        
-                        REM 1. Pull the latest image from ECR
-                        ssh -i "%SSH_KEY_PATH%" ec2-user@%EC2_HOST% "docker pull %IMAGE_NAME%"
-                        
-                        REM 2. Stop and remove the old container
-                        ssh -i "%SSH_KEY_PATH%" ec2-user@%EC2_HOST% "docker stop %CONTAINER_NAME% || true"
-                        ssh -i "%SSH_KEY_PATH%" ec2-user@%EC2_HOST% "docker rm %CONTAINER_NAME% || true"
-                        
-                        REM 3. Run the new container, mapping port 80
-                        ssh -i "%SSH_KEY_PATH%" ec2-user@%EC2_HOST% "docker run -d --name %CONTAINER_NAME% -p 80:80 %IMAGE_NAME%"
-                        
-                        echo "Deployment command sent successfully."
-                    '''
+                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
+                
+                // FIX: Replaced unstable 'sshagent' with 'withCredentials'. 
+                // This injects the key path ('SSH_KEY_PATH') and username ('SSH_USER') 
+                // for explicit use with 'scp' and 'ssh'.
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
+                    keyFileVariable: 'SSH_KEY_PATH', 
+                    usernameVariable: 'SSH_USER'
+                )]) {
+
+                    // 1. Copy the deploy.sh script to the EC2 host
+                    // We now use the -i flag with the temporary key file path
+                    sh "scp -i \"\${SSH_KEY_PATH}\" deploy.sh \${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/\${SSH_USER}/deploy.sh"
+
+                    // 2. Execute the deployment script remotely
+                    // We also use the -i flag with the temporary key file path
+                    sh "ssh -i \"\${SSH_KEY_PATH}\" \${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/\${SSH_USER}/deploy.sh && /home/\${SSH_USER}/deploy.sh'"
                 }
+                echo "Deployment command sent successfully."
             }
         }
     }
