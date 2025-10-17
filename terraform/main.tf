@@ -236,16 +236,24 @@ resource "aws_instance" "web_app_host" {
               echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
               sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
               
-              # 🛑 NEW FIX: Configure Firewalld to allow HTTP traffic 🛑
-              # This is necessary because the OS firewall blocks traffic before the Docker container gets it.
-              sudo yum install -y firewalld
-              sudo systemctl start firewalld
-              sudo systemctl enable firewalld
-              # Add permanent rule for port 80 (HTTP)
-              sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
-              # Reload the firewall rules
-              sudo firewall-cmd --reload
-
+              # 🛑 FINAL FIX: Configure OS Firewall (Firewalld and iptables) to allow HTTP 🛑
+              
+              # Attempt to configure Firewalld (Standard for modern Amazon Linux/CentOS)
+              if command -v firewall-cmd &> /dev/null
+              then
+                  echo "Configuring Firewalld for port 80..."
+                  sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
+                  sudo firewall-cmd --reload
+              else
+                  echo "Firewalld not found. Attempting iptables configuration..."
+              fi
+              
+              # Ensure iptables allows Docker container traffic (for older AMIs/general compatibility)
+              # This rule allows incoming traffic on port 80 (where Nginx is exposed)
+              sudo iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+              # Save the iptables rule so it persists across reboots
+              sudo service iptables save || true
+              
               echo "Setup complete. Docker and AWS CLI installed."
               EOF
 
