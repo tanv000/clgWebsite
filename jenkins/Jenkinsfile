@@ -16,7 +16,7 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        WEB_APP_HOST_IP = '15.207.18.241'
+        WEB_APP_HOST_IP = '13.203.228.191'
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -80,22 +80,22 @@ pipeline {
                 // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
                 // 1. Create the deploy.sh script locally
                 script {
-                    writeFile file: 'deploy.sh', text: """#!/bin/bash
-# FIX: Using absolute paths to guarantee commands are found
+    writeFile file: 'deploy.sh', text: """#!/bin/bash
+# FIX: Relying on environment PATH (fixed in EC2 User Data and loaded via 'bash -lc')
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# Log into ECR using absolute paths
-\$(/usr/local/bin/aws ecr get-login-password --region ${env.AWS_REGION}) | /usr/bin/docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+# Log into ECR - NO hardcoded paths needed
+\$(aws ecr get-login-password --region ${env.AWS_REGION}) | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
-/usr/bin/docker stop web-app-container || true
-/usr/bin/docker rm web-app-container || true
+docker stop web-app-container || true
+docker rm web-app-container || true
 
 # Run the new container
-/usr/bin/docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
+docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
-                }
+}
 
                withCredentials([sshUserPrivateKey(
                     credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
