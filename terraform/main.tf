@@ -235,6 +235,16 @@ resource "aws_instance" "web_app_host" {
               # CRITICAL: Add paths to .bashrc to ensure they load for ec2-user/Jenkins
               echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
               sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
+              
+              # 🛑 NEW FIX: Configure Firewalld to allow HTTP traffic 🛑
+              # This is necessary because the OS firewall blocks traffic before the Docker container gets it.
+              sudo yum install -y firewalld
+              sudo systemctl start firewalld
+              sudo systemctl enable firewalld
+              # Add permanent rule for port 80 (HTTP)
+              sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
+              # Reload the firewall rules
+              sudo firewall-cmd --reload
 
               echo "Setup complete. Docker and AWS CLI installed."
               EOF
