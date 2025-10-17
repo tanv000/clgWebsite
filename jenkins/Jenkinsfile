@@ -71,12 +71,12 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
                 
-                // --- FIX 1: WRITE deploy.sh TO WORKSPACE (Solves "No such file or directory") ---
+                // --- FIX 1: WRITE deploy.sh TO WORKSPACE (This part is correct) ---
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
 # Jenkins will pass the IMAGE_TAG as the first argument (\$1)
@@ -101,15 +101,14 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
-                    // Host Key Bypass flags are inlined. No 'def' keyword used.
-                    def HOST_KEY_BYPASS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
+                    // FIX 2: Host Key Bypass INLINED (Solves "Host key verification failed" and "Expected a step")
+                    
                     // 1. Copy the deploy.sh script to the EC2 host
-                    // Using interpolation for variables that are Groovy scope defined.
-                    sh "scp ${HOST_KEY_BYPASS} -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
+                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // 2. Execute the deployment script remotely
-                    sh "ssh ${HOST_KEY_BYPASS} -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
+                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
                 }
             }
         }
