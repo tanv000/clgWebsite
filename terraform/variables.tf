@@ -31,10 +31,16 @@ variable "key_pair_name" {
 }
 
 # -----------------------------------------------------------------
-# ECR Repository Name
+# ECR Repository Name and App Name
 # -----------------------------------------------------------------
 variable "ecr_repo_name" {
   description = "Name for the ECR repository"
   type        = string
   default     = "abc-college-web-app"
+}
+
+variable "app_name" {
+  description = "Name to tag the EC2 instance"
+  type        = string
+  default     = "ABC College Web App Server"
 }
