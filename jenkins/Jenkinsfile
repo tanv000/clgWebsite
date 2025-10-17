@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // Jenkins Pipeline for CI/CD of abc-college-web-app
 // FIX: Corrected missing closing brace/curly bracket error for Groovy parser.
+// FIX: Changed 'sh' to 'bat' for commands running on the Windows Jenkins agent.
 // -----------------------------------------------------------------------------
 pipeline {
     agent any
@@ -30,7 +31,8 @@ pipeline {
 
         stage('Build & Test (Optional)') {
             steps {
-                sh 'echo "Skipping formal build/test for this project"'
+                // CHANGED: Use 'bat' for Windows agent
+                bat 'echo "Skipping formal build/test for this project"'
             }
         }
 
@@ -47,19 +49,23 @@ pipeline {
                         
                         // 1. Authenticate Docker with ECR
                         echo 'Authenticating Docker with ECR...'
-                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
                         // 2. Build the Docker Image
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                        sh "docker build -t ${ECR_REPOSITORY} ."
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker build -t ${ECR_REPOSITORY} ."
                         
                         // 3. Tag the image for ECR
                         echo "Tagging image..."
-                        sh "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
                         // 4. Push the image to ECR
                         echo "Pushing image to ECR..."
-                        sh "docker push ${FULL_IMAGE_NAME}"
+                        // CHANGED: Use 'bat' for Windows agent
+                        bat "docker push ${FULL_IMAGE_NAME}"
                     }
                 }
             }
@@ -72,6 +78,11 @@ pipeline {
                 // Use sshagent for robust key handling
                 sshagent(credentials: [env.WEB_APP_HOST_SSH_CREDENTIAL_ID]) {
 
+                    // These steps use external tools (scp, ssh) which usually work 
+                    // on Windows if they are in the PATH (e.g., via Git for Windows), 
+                    // so we will test 'sh' one more time, as 'bat' syntax can be tricky 
+                    // for these specific commands. If they fail, we will swap to 'bat'.
+                    
                     // 1. Copy the deploy.sh script to the EC2 host
                     sh "scp deploy.sh ${WEB_APP_HOST_USER}@${WEB_APP_HOST_IP}:/home/${WEB_APP_HOST_USER}/deploy.sh"
 
