@@ -1,8 +1,5 @@
 // -----------------------------------------------------------------------------
 // Jenkins Pipeline for CI/CD of abc-college-web-app
-// FIX: Corrected missing closing brace/curly bracket error for Groovy parser.
-// FIX: Changed 'sh' to 'bat' for commands running on the Windows Jenkins agent.
-// FIX: Replaced unstable 'sshagent' block with 'withCredentials' to fix the StringIndexOutOfBoundsException.
 // -----------------------------------------------------------------------------
 pipeline {
     agent any
@@ -16,7 +13,8 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        WEB_APP_HOST_IP = '13.203.228.191'
+        // ⚠️ CRITICAL: REPLACE THIS WITH THE NEW IP FROM 'terraform apply' OUTPUT ⚠️
+        WEB_APP_HOST_IP = '35.154.59.115' 
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -76,16 +74,14 @@ pipeline {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
-                // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
-                // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
                 // 1. Create the deploy.sh script locally
                 script {
-    writeFile file: 'deploy.sh', text: """#!/bin/bash
-# FIX: Relying on environment PATH (fixed in EC2 User Data and loaded via 'bash -lc')
+                    writeFile file: 'deploy.sh', text: """#!/bin/bash
+# FIX: Relying on fixed environment PATH and attached IAM Role
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# Log into ECR - NO hardcoded paths needed
+# Login succeeds because of the attached IAM Role
 \$(aws ecr get-login-password --region ${env.AWS_REGION}) | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
@@ -95,18 +91,18 @@ docker rm web-app-container || true
 # Run the new container
 docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
-}
+                }
 
-               withCredentials([sshUserPrivateKey(
+                withCredentials([sshUserPrivateKey(
                     credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
                     
-                    // SCP command (should be the same as before, working)
+                    // SCP command
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // SSH command (FIX: Removed unnecessary 'sudo' for file permissions)
+                    // SSH command (FIX: 'bash -lc' forces the loading of .bashrc, which contains the PATH fix)
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }

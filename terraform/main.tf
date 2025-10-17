@@ -20,7 +20,7 @@ provider "aws" {
 resource "aws_ecr_repository" "app_repo" {
   name                 = var.ecr_repo_name
   image_tag_mutability = "MUTABLE"
-  force_delete         = true # <-- FIX: Allows deletion of repo with images
+  force_delete         = true # FIX: Allows deletion of repo with images
 
   image_scanning_configuration {
     scan_on_push = true
@@ -69,15 +69,52 @@ resource "aws_security_group" "web_sg" {
 }
 
 # -----------------------------------------------------------------
+# 4. IAM Role for ECR Access (CRITICAL FIX)
+# -----------------------------------------------------------------
+resource "aws_iam_role" "ec2_ecr_role" {
+  name = "ec2-ecr-role-${var.ecr_repo_name}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+# Attach the managed policy for ECR read-only access
+resource "aws_iam_role_policy_attachment" "ecr_readonly_attach" {
+  role       = aws_iam_role.ec2_ecr_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# -----------------------------------------------------------------
+# 5. IAM Instance Profile (CRITICAL FIX)
+# -----------------------------------------------------------------
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2-instance-profile-${var.ecr_repo_name}"
+  role = aws_iam_role.ec2_ecr_role.name
+}
+
+# -----------------------------------------------------------------
 # 3. EC2 Instance (Docker Host)
 # -----------------------------------------------------------------
 resource "aws_instance" "web_app_host" {
-  ami           = var.ami_id
-  instance_type = var.instance_type
-  key_name      = var.key_pair_name
+  ami             = var.ami_id
+  instance_type   = var.instance_type
+  key_name        = var.key_pair_name
   vpc_security_group_ids = [aws_security_group.web_sg.id]
+  
+  # FIX: Attach the IAM Instance Profile to allow ECR authentication
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
-  # User data to install Docker and Nginx on first boot
+  # User data to install Docker, AWS CLI, and fix the PATH for ec2-user
   user_data = <<-EOF
               #!/bin/bash
               
@@ -96,10 +133,7 @@ resource "aws_instance" "web_app_host" {
               unzip awscliv2.zip
               sudo ./aws/install
 
-              # CRITICAL: Add paths to .bashrc to ensure they load for ec2-user
-              # We expect aws to be in /usr/local/bin/ and docker in /usr/bin/
-              # The 'which' command failed because the environment isn't loading correctly.
-              # We will add a path export to the ec2-user's profile to fix this.
+              # CRITICAL: Add paths to .bashrc to ensure they load for ec2-user/Jenkins
               echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
               sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
