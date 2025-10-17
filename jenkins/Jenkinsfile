@@ -81,19 +81,19 @@ pipeline {
                 // 1. Create the deploy.sh script locally
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
-# Jenkins will pass the IMAGE_TAG as the first argument (\$1)
+# FIX: Using absolute paths to guarantee commands are found
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# Log into ECR (Using simple command names)
-\$(aws ecr get-login-password --region ${env.AWS_REGION}) | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+# Log into ECR using absolute paths
+\$(/usr/local/bin/aws ecr get-login-password --region ${env.AWS_REGION}) | /usr/bin/docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
-docker stop web-app-container || true
-docker rm web-app-container || true
+/usr/bin/docker stop web-app-container || true
+/usr/bin/docker rm web-app-container || true
 
 # Run the new container
-docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
+/usr/bin/docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
                 }
 
@@ -103,14 +103,11 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     usernameVariable: 'SSH_USER'
                 )]) {
                     
-                    // 1. Copy the deploy.sh script to the EC2 host
-                    // FIX: Re-introducing INSECURE flags for automation reliability
+                    // SCP command (should be the same as before, working)
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 2. Execute the deployment script remotely
-                    // FIX: Using the 'bash -lc' wrapper to ensure Docker and AWS CLI are found
-                    // FIX: Re-introducing INSECURE flags for automation reliability
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
+                    // SSH command (FIX: Removed unnecessary 'sudo' for file permissions)
+                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
