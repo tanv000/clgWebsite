@@ -1,0 +1,87 @@
+// Define the build agent (using a standard Docker image with AWS CLI, Docker, etc.)
+pipeline {
+    agent any
+    
+    // Define environment variables
+    environment {
+        AWS_ACCOUNT_ID  = 'YOUR_AWS_ACCOUNT_ID' // <-- Replace with your AWS Account ID
+        AWS_REGION      = 'us-east-1'           // <-- Must match region in Terraform variables.tf
+        ECR_REPO_NAME   = 'abc-college-website' // <-- Must match ECR repository name in terraform/variables.tf
+        IMAGE_TAG       = "latest" // Automatically use 'latest' for simple CD, or use ${env.BUILD_NUMBER}
+        ECR_REGISTRY    = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        REMOTE_HOST     = '' // Will be set dynamically in the Setup stage
+        REMOTE_SSH_CREDS = 'ec2-ssh-key' // <-- Replace with the ID of your Jenkins SSH Credential
+    }
+
+    stages {
+        stage('0. Setup') {
+            steps {
+                script {
+                    // Fetch the public IP of the EC2 instance provisioned by Terraform
+                    // NOTE: This assumes Jenkins can read the Terraform state file or an external service (like a script) can look up the IP.
+                    // For simplicity here, you will need to manually set the IP after Terraform runs, or use an AWS CLI call.
+                    // Manual Step: Find the IP of your "Jenkins-Web-App-Host" EC2 instance and set it here
+                    // Example:
+                    // env.REMOTE_HOST = sh(returnStdout: true, script: 'aws ec2 describe-instances --filters "Name=tag:Name,Values=Jenkins-Web-App-Host" --query "Reservations[*].Instances[*].PublicIpAddress" --output text --region ${env.AWS_REGION}').trim()
+                    
+                    // For now, setting a placeholder. **You must replace this with the actual IP.**
+                    env.REMOTE_HOST = 'XXX.XXX.XXX.XXX' // *** REQUIRED: Paste the EC2 Public IP here after Terraform apply ***
+                    
+                    if (env.REMOTE_HOST == 'XXX.XXX.XXX.XXX' || env.REMOTE_HOST.isEmpty()) {
+                        error('EC2 host IP not set. Please manually update the REMOTE_HOST environment variable in the Jenkinsfile.')
+                    }
+                    
+                    echo "ECR Registry: ${env.ECR_REGISTRY}/${env.ECR_REPO_NAME}"
+                    echo "Target EC2 IP: ${env.REMOTE_HOST}"
+                }
+            }
+        }
+
+        stage('1. Checkout Code') {
+            steps {
+                // Assuming the Jenkins job is configured to use SCM (like Git)
+                checkout scm
+                echo "Code checked out from SCM."
+            }
+        }
+        
+        stage('2. Build Docker Image') {
+            steps {
+                script {
+                    // Log in to AWS ECR using AWS credentials defined in Jenkins
+                    withCredentials([aws(credentialsId: 'aws-jenkins-credentials', accountId: env.AWS_ACCOUNT_ID)]) {
+                        sh """
+                        aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                        docker build -t ${env.ECR_REPO_NAME}:${env.IMAGE_TAG} .
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('3. Push to ECR') {
+            steps {
+                script {
+                    // Tag and push the image to ECR
+                    sh "docker tag ${env.ECR_REPO_NAME}:${env.IMAGE_TAG} ${env.ECR_REGISTRY}/${env.ECR_REPO_NAME}:${env.IMAGE_TAG}"
+                    sh "docker push ${env.ECR_REGISTRY}/${env.ECR_REPO_NAME}:${env.IMAGE_TAG}"
+                    echo "Image pushed successfully to ECR."
+                }
+            }
+        }
+
+        stage('4. Deploy to EC2') {
+            steps {
+                script {
+                    // Deploy via SSH to the EC2 host.
+                    // This calls the 'deploy.sh' script created via Terraform user_data.
+                    sshagent(credentials: [env.REMOTE_SSH_CREDS]) {
+                        sh "ssh -o StrictHostKeyChecking=no ec2-user@${env.REMOTE_HOST} 'sudo /usr/local/bin/deploy.sh ${env.IMAGE_TAG}'"
+                    }
+                    echo "Deployment command sent successfully to EC2 host."
+                    echo "Your application should now be accessible at http://${env.REMOTE_HOST}"
+                }
+            }
+        }
+    }
+}
