@@ -4,8 +4,8 @@ pipeline {
     
     // Define environment variables
     environment {
-        AWS_ACCOUNT_ID  = 'YOUR_AWS_ACCOUNT_ID' // <-- Replace with your AWS Account ID
-        AWS_REGION      = 'us-east-1'           // <-- Must match region in Terraform variables.tf
+        AWS_ACCOUNT_ID  = '708972351530' // <-- Replace with your AWS Account ID
+        AWS_REGION      = 'ap-south-1'           // <-- Must match region in Terraform variables.tf
         ECR_REPO_NAME   = 'abc-college-website' // <-- Must match ECR repository name in terraform/variables.tf
         IMAGE_TAG       = "latest" // Automatically use 'latest' for simple CD, or use ${env.BUILD_NUMBER}
         ECR_REGISTRY    = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -25,9 +25,9 @@ pipeline {
                     // env.REMOTE_HOST = sh(returnStdout: true, script: 'aws ec2 describe-instances --filters "Name=tag:Name,Values=Jenkins-Web-App-Host" --query "Reservations[*].Instances[*].PublicIpAddress" --output text --region ${env.AWS_REGION}').trim()
                     
                     // For now, setting a placeholder. **You must replace this with the actual IP.**
-                    env.REMOTE_HOST = 'XXX.XXX.XXX.XXX' // *** REQUIRED: Paste the EC2 Public IP here after Terraform apply ***
+                    env.REMOTE_HOST = '15.207.18.241' // *** REQUIRED: Paste the EC2 Public IP here after Terraform apply ***
                     
-                    if (env.REMOTE_HOST == 'XXX.XXX.XXX.XXX' || env.REMOTE_HOST.isEmpty()) {
+                    if (env.REMOTE_HOST == '15.207.18.241' || env.REMOTE_HOST.isEmpty()) {
                         error('EC2 host IP not set. Please manually update the REMOTE_HOST environment variable in the Jenkinsfile.')
                     }
                     
