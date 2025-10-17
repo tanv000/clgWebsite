@@ -75,8 +75,8 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
-                
-                // --- FIX 1: WRITE deploy.sh TO WORKSPACE (This part is correct) ---
+
+                // 1. Create the deploy.sh script locally (inside a 'script' block for Groovy logic)
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
 # Jenkins will pass the IMAGE_TAG as the first argument (\$1)
@@ -94,22 +94,22 @@ docker rm web-app-container || true
 docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
 """
                 }
-                // ------------------------------------------
 
                 withCredentials([sshUserPrivateKey(
                     credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
-
-                    // 1. Copy the deploy.sh script to the EC2 host
                     // Host Key Bypass is INLINED to be Declarative-compliant.
+
+                    // 2. Copy the deploy.sh script to the EC2 host
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 2. Execute the deployment script remotely
-                    // FIX: Using 'bash -l -c' to load the environment (including Docker and AWS CLI path/creds).
+                    // 3. Execute the deployment script remotely
+                    // FIX: Using 'bash -l -c' to properly load the environment (Docker/AWS CLI credentials)
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'cd /home/${SSH_USER} && bash -l -c \"sudo chmod +x ./deploy.sh && ./deploy.sh ${IMAGE_TAG}\"'"
                 }
+            }
         }
     }
 }
