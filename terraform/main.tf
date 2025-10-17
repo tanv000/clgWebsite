@@ -15,12 +15,52 @@ provider "aws" {
 }
 
 # -----------------------------------------------------------------
+# 0. Network Data Sources (Standard Practice: Looking up existing resources)
+# -----------------------------------------------------------------
+
+# Look up the default VPC by ID
+data "aws_vpc" "selected" {
+  default = true
+}
+
+# Look up the specific subnet where the EC2 host is running.
+# Dynamically select a Public Subnet by filtering on 'map-public-ip-on-launch: true'
+data "aws_subnet" "selected" {
+  vpc_id = data.aws_vpc.selected.id
+  
+  filter {
+    # Filters for subnets where public IPs are assigned on launch (Public Subnet)
+    name   = "map-public-ip-on-launch"
+    values = ["true"]
+  }
+  
+  filter {
+    # Filters to the first Availability Zone to guarantee a single match
+    # NOTE: You must have a variable named 'aws_region' defined for this to work.
+    values = ["${var.aws_region}a"] 
+    name   = "availability-zone"
+  }
+}
+
+# Look up the Route Table associated with that subnet (needed for S3 Gateway Endpoint)
+# FIX: Filter by the VPC ID and look for the MAIN route table.
+data "aws_route_table" "selected" {
+  vpc_id = data.aws_vpc.selected.id
+  
+  filter {
+    name   = "association.main"
+    values = ["true"]
+  }
+}
+
+
+# -----------------------------------------------------------------
 # 1. ECR (Elastic Container Registry) Repository
 # -----------------------------------------------------------------
 resource "aws_ecr_repository" "app_repo" {
   name                 = var.ecr_repo_name
   image_tag_mutability = "MUTABLE"
-  force_delete         = true # FIX: Allows deletion of repo with images
+  force_delete         = true 
 
   image_scanning_configuration {
     scan_on_push = true
@@ -37,6 +77,7 @@ output "ecr_repository_url" {
 resource "aws_security_group" "web_sg" {
   name        = "web-server-sg"
   description = "Allow HTTP and SSH inbound traffic"
+  vpc_id      = data.aws_vpc.selected.id 
 
   # Ingress (Inbound) Rules
   ingress {
@@ -69,7 +110,7 @@ resource "aws_security_group" "web_sg" {
 }
 
 # -----------------------------------------------------------------
-# 4. IAM Role for ECR Access (CRITICAL FIX)
+# 3. IAM Role for ECR Access
 # -----------------------------------------------------------------
 resource "aws_iam_role" "ec2_ecr_role" {
   name = "ec2-ecr-role-${var.ecr_repo_name}"
@@ -95,7 +136,7 @@ resource "aws_iam_role_policy_attachment" "ecr_readonly_attach" {
 }
 
 # -----------------------------------------------------------------
-# 5. IAM Instance Profile (CRITICAL FIX)
+# 4. IAM Instance Profile
 # -----------------------------------------------------------------
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "ec2-instance-profile-${var.ecr_repo_name}"
@@ -103,7 +144,62 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 }
 
 # -----------------------------------------------------------------
-# 3. EC2 Instance (Docker Host)
+# 5. VPC ENDPOINTS FOR ECR ACCESS (Network Access Fix)
+# -----------------------------------------------------------------
+
+# Security Group for the VPC Endpoints
+resource "aws_security_group" "vpc_endpoint_sg" {
+  name        = "vpc-endpoint-sg"
+  description = "Allow inbound traffic from the main security group"
+  vpc_id      = data.aws_vpc.selected.id 
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    security_groups = [aws_security_group.web_sg.id] 
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ECR API Endpoint (Interface)
+resource "aws_vpc_endpoint" "ecr_api_endpoint" {
+  vpc_id              = data.aws_vpc.selected.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  subnet_ids          = [data.aws_subnet.selected.id]
+  private_dns_enabled = true
+}
+
+# ECR DKR Endpoint (Interface)
+resource "aws_vpc_endpoint" "ecr_dkr_endpoint" {
+  vpc_id              = data.aws_vpc.selected.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  subnet_ids          = [data.aws_subnet.selected.id]
+  private_dns_enabled = true
+}
+
+# S3 Gateway Endpoint
+resource "aws_vpc_endpoint" "s3_endpoint" {
+  vpc_id       = data.aws_vpc.selected.id
+  service_name = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  # Use the dynamically selected main route table
+  route_table_ids = [data.aws_route_table.selected.id] 
+}
+
+
+# -----------------------------------------------------------------
+# 6. EC2 Instance (Docker Host)
 # -----------------------------------------------------------------
 resource "aws_instance" "web_app_host" {
   ami             = var.ami_id
@@ -111,8 +207,11 @@ resource "aws_instance" "web_app_host" {
   key_name        = var.key_pair_name
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   
-  # FIX: Attach the IAM Instance Profile to allow ECR authentication
+  # Attach the IAM Instance Profile
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+  # Reference the dynamically selected Subnet ID 
+  subnet_id       = data.aws_subnet.selected.id
+
 
   # User data to install Docker, AWS CLI, and fix the PATH for ec2-user
   user_data = <<-EOF
