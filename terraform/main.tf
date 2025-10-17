@@ -15,7 +15,7 @@ provider "aws" {
 }
 
 # -----------------------------------------------------------------
-# 0. Network Data Sources (Standard Practice: Looking up existing resources)
+# 0. Network Data Sources
 # -----------------------------------------------------------------
 
 # Look up the default VPC by ID
@@ -24,7 +24,6 @@ data "aws_vpc" "selected" {
 }
 
 # Look up the specific subnet where the EC2 host is running.
-# Dynamically select a Public Subnet by filtering on 'map-public-ip-on-launch: true'
 data "aws_subnet" "selected" {
   vpc_id = data.aws_vpc.selected.id
   
@@ -36,14 +35,12 @@ data "aws_subnet" "selected" {
   
   filter {
     # Filters to the first Availability Zone to guarantee a single match
-    # NOTE: You must have a variable named 'aws_region' defined for this to work.
     values = ["${var.aws_region}a"] 
     name   = "availability-zone"
   }
 }
 
-# Look up the Route Table associated with that subnet (needed for S3 Gateway Endpoint)
-# FIX: Filter by the VPC ID and look for the MAIN route table.
+# Look up the Route Table associated with that subnet (the MAIN route table)
 data "aws_route_table" "selected" {
   vpc_id = data.aws_vpc.selected.id
   
@@ -51,6 +48,26 @@ data "aws_route_table" "selected" {
     name   = "association.main"
     values = ["true"]
   }
+}
+
+# -----------------------------------------------------------------
+# 0a. CRITICAL FIX: Find Internet Gateway 🔍
+# -----------------------------------------------------------------
+data "aws_internet_gateway" "selected" {
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.selected.id]
+  }
+}
+
+# -----------------------------------------------------------------
+# 0b. CRITICAL FIX: Ensure correct public route to Internet Gateway 🌐
+# This explicitly creates the correct route to fix the connection timeout.
+# -----------------------------------------------------------------
+resource "aws_route" "public_internet_route" {
+  route_table_id         = data.aws_route_table.selected.id # Use the ID of the main route table
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = data.aws_internet_gateway.selected.id # Explicitly target the IGW ID
 }
 
 
@@ -190,8 +207,8 @@ resource "aws_vpc_endpoint" "ecr_dkr_endpoint" {
 
 # S3 Gateway Endpoint
 resource "aws_vpc_endpoint" "s3_endpoint" {
-  vpc_id       = data.aws_vpc.selected.id
-  service_name = "com.amazonaws.${var.aws_region}.s3"
+  vpc_id            = data.aws_vpc.selected.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   # Use the dynamically selected main route table
   route_table_ids = [data.aws_route_table.selected.id] 
@@ -202,15 +219,17 @@ resource "aws_vpc_endpoint" "s3_endpoint" {
 # 6. EC2 Instance (Docker Host)
 # -----------------------------------------------------------------
 resource "aws_instance" "web_app_host" {
-  ami             = var.ami_id
-  instance_type   = var.instance_type
-  key_name        = var.key_pair_name
+  ami                   = var.ami_id
+  instance_type         = var.instance_type
+  key_name              = var.key_pair_name
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   
   # Attach the IAM Instance Profile
-  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile  = aws_iam_instance_profile.ec2_profile.name
   # Reference the dynamically selected Subnet ID 
-  subnet_id       = data.aws_subnet.selected.id
+  subnet_id             = data.aws_subnet.selected.id
+  # 🟢 Added: Ensures a public IP is explicitly assigned
+  associate_public_ip_address = true 
 
 
   # User data to install Docker, AWS CLI, and fix the PATH for ec2-user
@@ -242,6 +261,10 @@ resource "aws_instance" "web_app_host" {
               if command -v firewall-cmd &> /dev/null
               then
                   echo "Configuring Firewalld for port 80..."
+                  # Install firewalld if not present
+                  sudo yum install -y firewalld
+                  sudo systemctl start firewalld
+                  sudo systemctl enable firewalld
                   sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
                   sudo firewall-cmd --reload
               else
