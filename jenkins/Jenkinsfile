@@ -71,12 +71,12 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
                 
-                // --- FIX: WRITE deploy.sh TO WORKSPACE ---
+                // --- FIX 1: WRITE deploy.sh TO WORKSPACE (This part is correct) ---
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
 # Jenkins will pass the IMAGE_TAG as the first argument (\$1)
@@ -102,12 +102,14 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     usernameVariable: 'SSH_USER'
                 )]) {
 
+                    // --- FIX 2: Skip Host Key Verification (The solution to "Host key verification failed") ---
+                    def SSH_OPTIONS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                    
                     // 1. Copy the deploy.sh script to the EC2 host
-                    sh "scp -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
+                    sh "scp ${SSH_OPTIONS} -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // 2. Execute the deployment script remotely
-                    // Note: We need to pass the IMAGE_TAG to the remote script
-                    sh "ssh -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
+                    sh "ssh ${SSH_OPTIONS} -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'sudo chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}'"
                 }
             }
         }
