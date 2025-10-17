@@ -1,0 +1,521 @@
+/*
+ * General Styles and Reset
+ * Applies to all pages for consistency.
+ */
+:root {
+  --primary-color: #004d99; /* ABC College Blue */
+  --secondary-color: #ff9900; /* Accent Orange */
+  --text-color: #333;
+  --light-bg: #f4f4f9;
+  --white-bg: #fff;
+  --border-color: #ddd;
+  --font-family: Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  line-height: 1.6;
+  color: var(--text-color);
+  background-color: var(--light-bg);
+  padding-top: 5px; /* Small space at the very top */
+}
+
+/* Container for main content, often used on body or main */
+header, main, footer {
+  width: 90%;
+  max-width: 1200px;
+  margin: 0 auto;
+  background-color: var(--white-bg);
+  padding: 10px 20px;
+}
+
+/* Typography */
+h1 {
+  color: var(--primary-color);
+  font-size: 2em;
+  margin-bottom: 0.5em;
+  padding-left: 20px; /* Aligns with content padding */
+}
+
+h2 {
+  color: var(--primary-color);
+  font-size: 1.75em;
+  border-bottom: 3px solid var(--secondary-color);
+  padding-bottom: 5px;
+  margin: 1.5em 0 1em 0;
+}
+
+h3 {
+  color: var(--text-color);
+  font-size: 1.3em;
+  margin-top: 1.5em;
+}
+
+p, address, li, dt, dd {
+  margin-bottom: 1em;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  color: var(--secondary-color);
+}
+
+/* Header and Navigation */
+header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-color);
+  padding: 15px 20px;
+  border-radius: 5px 5px 0 0;
+}
+
+header img {
+  border-radius: 50%;
+  margin-right: 15px;
+  border: 2px solid var(--primary-color);
+}
+
+header h1 {
+  flex-grow: 1;
+  margin: 0;
+  padding: 0;
+}
+
+nav {
+  margin-top: 10px;
+  width: 100%;
+  text-align: center;
+}
+
+nav a {
+  padding: 0 10px;
+  font-weight: bold;
+  white-space: nowrap; /* Prevents menu items from wrapping */
+}
+
+/* Horizontal Rule Styling */
+hr {
+  border: none;
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 10px 0;
+}
+
+/* Main Content Sections */
+main section {
+  padding: 20px 0;
+}
+
+/* Welcome Section - Index Page */
+section:first-child {
+  padding-top: 0;
+}
+
+mark {
+  background-color: var(--secondary-color);
+  color: var(--white-bg);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+/* Figures and Images */
+figure {
+  margin: 1em 0;
+  text-align: center;
+  padding: 10px;
+  background-color: var(--light-bg);
+  border: 1px solid var(--border-color);
+}
+
+figure img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+figcaption {
+  font-style: italic;
+  font-size: 0.9em;
+  padding: 10px 0 5px;
+}
+
+/* Department Gallery (departments.html) - Grid Layout */
+.department-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: space-around;
+}
+
+.department-gallery figure {
+  flex: 1 1 calc(33% - 20px); /* 3 columns on large screens */
+  min-width: 280px; /* Minimum size for smaller screens */
+  margin: 0; /* Override default figure margin */
+  padding: 0;
+  border: none;
+  background-color: transparent;
+}
+
+.department-gallery img {
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.department-gallery img:hover {
+  transform: scale(1.03);
+}
+
+/* Lists (UL, OL, DL) */
+ul, ol {
+  padding-left: 25px;
+  margin-bottom: 1.5em;
+}
+
+li {
+  padding-left: 5px;
+}
+
+dt {
+  font-weight: bold;
+  color: var(--primary-color);
+  margin-top: 0.5em;
+  padding-left: 5px;
+}
+
+dd {
+  margin-left: 20px;
+  border-left: 3px solid var(--border-color);
+  padding-left: 10px;
+}
+
+/* Tables (index.html) */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+caption {
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: var(--primary-color);
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+thead th {
+  background-color: var(--primary-color);
+  color: var(--white-bg);
+  font-weight: bold;
+  border-top: 1px solid var(--primary-color);
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--light-bg);
+}
+
+tbody tr:hover {
+  background-color: #e0e0e9;
+}
+
+/* Details/Summary (about.html) */
+details {
+  border: 1px solid var(--border-color);
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 5px;
+  background-color: var(--light-bg);
+}
+
+summary {
+  font-weight: bold;
+  color: var(--primary-color);
+  cursor: pointer;
+  padding: 5px 0;
+  outline: none;
+}
+
+details[open] summary {
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 10px;
+}
+
+details p {
+  padding-left: 15px;
+}
+
+/* Forms (admissions.html, events.html, contact.html) */
+form {
+  max-width: 600px;
+  margin: 1.5em 0;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background-color: var(--light-bg);
+}
+
+fieldset {
+  border: 1px solid var(--primary-color);
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+}
+
+legend {
+  font-weight: bold;
+  color: var(--primary-color);
+  padding: 0 10px;
+}
+
+label {
+  display: inline-block;
+  min-width: 120px;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+select,
+datalist,
+textarea {
+  width: calc(100% - 130px); /* Accounts for label width */
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+/* Specific input adjustments */
+input[type="file"],
+input[type="checkbox"] {
+  width: auto;
+}
+
+/* Buttons */
+input[type="submit"],
+input[type="reset"] {
+  background-color: var(--primary-color);
+  color: var(--white-bg);
+  border: none;
+  padding: 10px 20px;
+  margin-right: 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 1em;
+  transition: background-color 0.3s ease;
+}
+
+input[type="reset"] {
+  background-color: #6c757d; /* A neutral gray for reset */
+}
+
+input[type="submit"]:hover {
+  background-color: #003366;
+}
+
+input[type="reset"]:hover {
+  background-color: #5a6268;
+}
+
+/* Progress and Meter (admissions.html) */
+progress, meter {
+  width: 100%;
+  height: 25px;
+  vertical-align: middle;
+  margin-top: 5px;
+  border-radius: 5px;
+  overflow: hidden; /* Hide default styling borders */
+}
+
+progress {
+  color: var(--primary-color); /* Fallback color */
+  background-color: var(--border-color);
+}
+
+/* Targetting Webkit (Chrome, Safari) */
+progress::-webkit-progress-bar {
+  background-color: var(--border-color);
+  border-radius: 5px;
+}
+
+progress::-webkit-progress-value {
+  background-color: var(--primary-color);
+  border-radius: 5px;
+}
+
+/* Targetting Firefox */
+progress::-moz-progress-bar {
+  background-color: var(--primary-color);
+}
+
+/* Campus Tour Video (index.html) */
+video {
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  display: block;
+  margin: 1.5em auto;
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 15px 20px;
+  font-size: 0.9em;
+  color: var(--text-color);
+  border-top: 1px solid var(--border-color);
+  border-radius: 0 0 5px 5px;
+  background-color: var(--light-bg);
+}
+
+footer address {
+  font-style: normal;
+  margin: 5px 0;
+}
+
+footer p {
+  margin: 0;
+}
+
+/* Faculty Cards (faculty.html) - Flexbox for layout */
+.faculty-directory {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  justify-content: center;
+}
+
+.faculty-directory figure {
+  width: 300px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: var(--white-bg);
+  margin: 0; /* Override figure margin */
+}
+
+.faculty-directory img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px 8px 0 0;
+  display: block;
+}
+
+.faculty-directory figcaption {
+  text-align: center;
+  padding: 15px;
+  font-style: normal;
+}
+
+.faculty-directory figcaption p {
+  margin: 5px 0;
+}
+
+.faculty-directory figcaption a {
+  font-size: 0.9em;
+  word-break: break-all;
+}
+
+/* Contact Page Map/Iframe */
+.map-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: space-around;
+  margin-top: 1.5em;
+}
+
+.map-container figure {
+  flex: 1 1 45%;
+  min-width: 300px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+}
+
+.map-container iframe {
+  max-width: 100%;
+  height: 450px;
+  display: block;
+  border-radius: 8px;
+}
+
+/* Media Query for smaller screens */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  header img {
+    margin: 0 0 10px 0;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  nav a {
+    padding: 5px 8px;
+    font-size: 0.9em;
+  }
+
+  h1 {
+    font-size: 1.5em;
+    padding-left: 0;
+  }
+
+  /* Form adjustments */
+  label {
+    width: 100%;
+    margin-bottom: 0;
+    display: block;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  select,
+  datalist,
+  textarea {
+    width: 100%;
+    margin-bottom: 15px;
+  }
+
+  /* Department Gallery on mobile */
+  .department-gallery figure {
+    flex: 1 1 100%;
+  }
+
+  .map-container figure {
+    flex: 1 1 100%;
+  }
+}
