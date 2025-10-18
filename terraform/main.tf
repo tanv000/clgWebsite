@@ -84,7 +84,9 @@ resource "aws_ecr_repository" "app_repo" {
   }
 }
 
-# NOTE: ECR URL output is moved to outputs.tf
+output "ecr_repository_url" {
+  value = aws_ecr_repository.app_repo.repository_url
+}
 
 # -----------------------------------------------------------------
 # 2. Security Group (Firewall)
@@ -253,18 +255,29 @@ resource "aws_instance" "web_app_host" {
               echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
               sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
               
-              # 🛑 FINAL FIXES: Configure OS Firewall (iptables) to allow traffic 🛑
+              # 🛑 FINAL FIX: Configure OS Firewall (Firewalld and iptables) to allow HTTP 🛑
               
-              # 1. Allow incoming traffic on port 80 (INPUT chain)
+              # Attempt to configure Firewalld (Standard for modern Amazon Linux/CentOS)
+              if command -v firewall-cmd &> /dev/null
+              then
+                  echo "Configuring Firewalld for port 80..."
+                  # Install firewalld if not present
+                  sudo yum install -y firewalld
+                  sudo systemctl start firewalld
+                  sudo systemctl enable firewalld
+                  sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
+                  sudo firewall-cmd --reload
+              else
+                  echo "Firewalld not found. Attempting iptables configuration..."
+              fi
+              
+              # Ensure iptables allows Docker container traffic (for older AMIs/general compatibility)
+              # This rule allows incoming traffic on port 80 (where Nginx is exposed)
               sudo iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
-              
-              # 2. CRITICAL FIX: Allow traffic to forward from host interface to the Docker bridge network (FORWARD chain)
-              sudo iptables -P FORWARD ACCEPT
-              
               # Save the iptables rule so it persists across reboots
               sudo service iptables save || true
               
-              echo "Setup complete. Docker and AWS CLI installed. Firewall configured."
+              echo "Setup complete. Docker and AWS CLI installed."
               EOF
 
   tags = {
@@ -272,4 +285,6 @@ resource "aws_instance" "web_app_host" {
   }
 }
 
-# NOTE: The output block for the public IP is now in outputs.tf
+output "web_app_public_ip" {
+  value = aws_instance.web_app_host.public_ip
+}
