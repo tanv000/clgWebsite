@@ -59,12 +59,12 @@ pipeline {
             }
         }
         
-        // 🛠️ FIX 1: Ensure Terraform is Initialized by changing directory
+        // FIX 1: Initialize Terraform by changing directory
         stage('Terraform Init') {
             steps {
                 script {
                     echo "Initializing Terraform backend..."
-                    // 🛑 CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
+                    // CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
                     dir('terraform') {
                         bat 'terraform init'
                     }
@@ -72,13 +72,26 @@ pipeline {
             }
         }
         
-        // 🛠️ FIX 2: Dynamically read the EC2 IP using Windows 'bat' within the correct directory
+        // 🛠️ NEW STAGE: Apply Terraform changes to provision infrastructure and populate state
+        stage('Terraform Apply') {
+            steps {
+                script {
+                    echo "Applying Terraform configuration to ensure resources and outputs exist..."
+                    dir('terraform') {
+                        // Use '-auto-approve' for non-interactive execution in CI/CD
+                        bat 'terraform apply -auto-approve'
+                    }
+                }
+            }
+        }
+        
+        // FIX 2: Dynamically read the EC2 IP using Windows 'bat' within the correct directory
         stage('Get Host IP') {
             steps {
                 script {
                     def host_ip = ''
                     
-                    // 🛑 CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
+                    // CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
                     dir('terraform') {
                         // 1. Execute the Terraform command and redirect output to a file (Windows bat trick)
                         bat 'terraform output -raw web_app_public_ip > host_ip.txt'
@@ -86,11 +99,11 @@ pipeline {
                         // 2. Read the content of the file from the current directory (which is 'terraform')
                         host_ip = readFile('host_ip.txt').trim()
                         
-                        // Clean up the temporary file
+                        // 3. Clean up the temporary file
                         bat 'del host_ip.txt' 
                     }
 
-                    // 3. Set the environment variable
+                    // 4. Set the environment variable
                     env.WEB_APP_HOST_IP = host_ip
                     
                     echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
