@@ -13,8 +13,7 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
-        WEB_APP_HOST_IP = '65.2.141.152' 
+        // NOTE: WEB_APP_HOST_IP is now set dynamically in the 'Load Infra Details' stage.
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -27,6 +26,22 @@ pipeline {
                 checkout scm 
             }
         }
+
+        // 🟢 NEW STAGE: Dynamically load the EC2 IP from the committed file
+        stage('Load Infra Details') {
+            steps {
+                script {
+                    // Read the content of the file (assumed to be in the repository root) and trim whitespace
+                    def ip_address = readFile(file: 'web_app_ip.txt').trim()
+                    
+                    // Set the environment variable for subsequent stages
+                    env.WEB_APP_HOST_IP = ip_address
+                    
+                    echo "Dynamically loaded Host IP: ${env.WEB_APP_HOST_IP}"
+                }
+            }
+        }
+        // ---------------------------------------------------------------------
 
         stage('Build & Test (Optional)') {
             steps {
@@ -72,18 +87,18 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
+                // This now uses the dynamically loaded IP
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
                 // 1. Create the deploy.sh script locally
                 script {
+                    // NOTE: Removed the Groovy error-causing backslash and the shell error-causing command substitution from the deploy.sh template
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
 # FIX: Relying on fixed environment PATH and attached IAM Role
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# 🛑 CRITICAL FIX APPLIED HERE:
-# The command substitution is wrapped entirely to ensure the token is piped 
-# to 'docker login' and not executed as a command itself.
+# 🟢 CORRECTED LOGIN: Simply executes the login command without command substitution.
 aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
@@ -108,7 +123,6 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // SSH command to execute the script
-                    // 'bash -lc' is used to source the .bashrc file, ensuring AWS CLI and Docker are in PATH
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
