@@ -27,7 +27,7 @@ pipeline {
             }
         }
         
-        // 🟢 FIXED STAGE: Using 'bat' for reliable credential passing on Windows agent
+        // 🟢 FINAL FIXED STAGE: Uses PowerShell to capture clean AWS CLI output
         stage('Load Infra Details from SSM') {
             steps {
                 script {
@@ -41,9 +41,10 @@ pipeline {
                     ]) {
                         echo "Retrieving Host IP from SSM Parameter Store..."
                         
-                        // Use 'bat' to execute the AWS CLI command, ensuring it uses the temporary AWS credentials.
+                        // FIX: Use 'powershell -command' inside 'bat' to execute the AWS CLI.
+                        // PowerShell guarantees only the command output is returned, stripping the prompt text.
                         def ip_address_raw = bat(
-                            script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text",
+                            script: 'powershell -command "aws ssm get-parameter --name /app/web/host-ip --region $env:AWS_REGION --query Parameter.Value --output text"',
                             returnStdout: true
                         ).trim()
                         
@@ -101,7 +102,7 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
-                // This stage uses the dynamically set ${env.WEB_APP_HOST_IP}
+                // This stage uses the now-clean ${env.WEB_APP_HOST_IP}
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
                 // 1. Create the deploy.sh script locally
