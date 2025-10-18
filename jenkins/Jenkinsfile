@@ -31,10 +31,12 @@ pipeline {
                 bat 'echo "Skipping formal build/test for this project"'
             }
         }
-
-        stage('Docker Build & Push') {
+        
+        // ✅ STANDARDS FIX: Consolidate all AWS-dependent steps into one stage.
+        stage('AWS Infrastructure and Image') {
             steps {
                 script {
+                    // Inject AWS credentials ONCE for all encapsulated steps (Docker & Terraform)
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
@@ -43,180 +45,48 @@ pipeline {
                         )
                     ]) {
                         
+                        // --- 1. Docker Build & Push (Uses AWS ECR) ---
                         echo 'Authenticating Docker with ECR...'
                         bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
                         bat "docker build -t ${ECR_REPOSITORY} ."
-                        
-                        echo "Tagging image..."
                         bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
                         echo "Pushing image to ECR..."
                         bat "docker push ${FULL_IMAGE_NAME}"
+
+                        // --- 2. Terraform Init (Uses AWS Credentials) ---
+                        echo "Initializing Terraform backend..."
+                        dir('terraform') {
+                            bat 'terraform init'
+                        }
+                        
+                        // --- 3. Terraform Apply (Uses AWS Credentials) ---
+                        echo "Applying Terraform configuration to ensure resources and outputs exist..."
+                        dir('terraform') {
+                            bat 'terraform apply -auto-approve'
+                        }
+                        
+                        // --- 4. Get Host IP (Reads Terraform Output) ---
+                        echo "Retrieving dynamic host IP..."
+                        def host_ip = ''
+                        dir('terraform') {
+                            // Note: terraform output will succeed here because apply ran above
+                            bat 'terraform output -raw web_app_public_ip > host_ip.txt'
+                            host_ip = readFile('host_ip.txt').trim()
+                            bat 'del host_ip.txt' // Clean up temporary file
+                        }
+
+                        // Set the environment variable for the next stage
+                        env.WEB_APP_HOST_IP = host_ip
+                        echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
                     }
                 }
             }
-        }
+        } // End of AWS Infrastructure and Image stage
         
-        // FIX 1: Initialize Terraform by changing directory
-        stage('Terraform Init') {
-            steps {
-                script {
-                    echo "Initializing Terraform backend..."
-                    // CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
-                    dir('terraform') {
-                        bat 'terraform init'
-                    }
-                }
-            }
-        }
-        
-        // 🛠️ NEW STAGE: Apply Terraform changes to provision infrastructure and populate state
-        stage('Terraform Apply') {
-            steps {
-                script {
-                    echo "Applying Terraform configuration to ensure resources and outputs exist..."
-                    dir('terraform') {
-                        // Use '-auto-approve' for non-interactive execution in CI/CD
-                        bat 'terraform apply -auto-approve'
-                    }
-                }
-            }
-        }
-        
-        // FIX 2: Dynamically read the EC2 IP using Windows 'bat' within the correct directory
-        stage('Get Host IP') {
-            steps {
-                script {
-                    def host_ip = ''
-                    
-                    // CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
-                    dir('terraform') {
-                        // 1. Execute the Terraform command and redirect output to a file (Windows bat trick)
-                        bat 'terraform output -raw web_app_public_ip > host_ip.txt'
-                        
-                        // 2. Read the content of the file from the current directory (which is 'terraform')
-                        host_ip = readFile('host_ip.txt').trim()
-                        
-                        // 3. Clean up the temporary file
-                        bat 'del host_ip.txt' 
-                    }
-
-                    // 4. Set the environment variable
-                    env.WEB_APP_HOST_IP = host_ip
-                    
-                    echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
-                }
-            }
-        }
-        
-        stage('Deploy to EC2') {
-            steps {
-                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
-                
-                // IMPORTANT: Ensure 'deploy.sh' exists in your Git repository and is committed.
-
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
-                    keyFileVariable: 'SSH_KEY_PATH', 
-                    usernameVariable: 'SSH_USER'
-                )]) {
-                    
-                    // 1. SCP command to transfer the external deploy.sh script
-                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
-
-                    // 2. SSH command to execute the script on the remote (Linux) EC2 host
-                    sh "ssh -o StrictHostKeyC// -----------------------------------------------------------------------------
-// Jenkins Pipeline for CI/CD of abc-college-web-app
-// -----------------------------------------------------------------------------
-pipeline {
-    agent any
-
-    environment {
-        // AWS ECR Settings 
-        AWS_REGION      = 'ap-south-1'
-        AWS_ACCOUNT_ID  = '708972351530'
-        ECR_REPOSITORY  = 'abc-college-web-app'
-        IMAGE_TAG       = "latest"
-        FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
-
-        // EC2 Host Settings 
-        WEB_APP_HOST_IP = '' // Will be set dynamically
-        WEB_APP_HOST_USER = 'ec2-user'
-        WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
-    }
-    
-    // 🛑 CRITICAL FIX: Wrap all AWS-dependent stages in a script block with credentials
-    stages {
-        stage('AWS Operations') {
-            steps {
-                script {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'AWS_ECR_CREDENTIALS', 
-                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
-                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                        )
-                    ]) {
-                        // All subsequent stages that require AWS credentials will run inside this block
-                        
-                        stage('SCM Checkout') {
-                            // ... (Your existing SCM checkout steps) ...
-                            echo 'Cloning repository...'
-                            checkout scm
-                        }
-
-                        stage('Build & Test (Optional)') {
-                            bat 'echo "Skipping formal build/test for this project"'
-                        }
-
-                        stage('Docker Build & Push') {
-                            echo 'Authenticating Docker with ECR...'
-                            bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
-                            echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                            bat "docker build -t ${ECR_REPOSITORY} ."
-                            
-                            echo "Tagging image..."
-                            bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
-
-                            echo "Pushing image to ECR..."
-                            bat "docker push ${FULL_IMAGE_NAME}"
-                        }
-                        
-                        // FIX: Terraform now has access to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-                        stage('Terraform Init') {
-                            echo "Initializing Terraform backend..."
-                            dir('terraform') {
-                                bat 'terraform init'
-                            }
-                        }
-                        
-                        // FIX: Terraform Apply now has credentials
-                        stage('Terraform Apply') {
-                            echo "Applying Terraform configuration to ensure resources and outputs exist..."
-                            dir('terraform') {
-                                bat 'terraform apply -auto-approve'
-                            }
-                        }
-                        
-                        stage('Get Host IP') {
-                            def host_ip = ''
-                            dir('terraform') {
-                                bat 'terraform output -raw web_app_public_ip > host_ip.txt'
-                                host_ip = readFile('host_ip.txt').trim()
-                                bat 'del host_ip.txt' 
-                            }
-                            env.WEB_APP_HOST_IP = host_ip
-                            echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
-                        }
-                    }
-                }
-            }
-        } // End of AWS Operations stage
-        
-        // This final stage runs outside the credentials block as it uses SSH keys, not AWS keys.
+        // This stage uses SSH keys, so it remains separate and clean.
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
@@ -231,13 +101,7 @@ pipeline {
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // 2. SSH command to execute the script on the remote (Linux) EC2 host
-                    // The remote host uses IAM role for ECR login, which is why we export the other variables.
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"export AWS_REGION=${AWS_REGION} export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} export ECR_REPOSITORY=${ECR_REPOSITORY} && chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
-                }
-            }
-        }
-    }
-}hecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"export AWS_REGION=${AWS_REGION} export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} export ECR_REPOSITORY=${ECR_REPOSITORY} && chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
