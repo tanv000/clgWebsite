@@ -13,8 +13,8 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
-        WEB_APP_HOST_IP = '65.2.141.152' 
+        // 💡 CRITICAL FIX: The host address is now dynamically set as DNS.
+        WEB_APP_HOST_DNS = '' // Will be set dynamically after Terraform applies.
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -28,10 +28,44 @@ pipeline {
             }
         }
 
+        stage('Destroy Previous Infrastructure (Local State Workaround)') {
+            steps {
+                // This step ensures the pipeline is repeatable without S3 remote state
+                bat 'echo "Attempting to destroy old infrastructure..."'
+                // Use '-lock=false' and '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
+                bat 'terraform destroy -auto-approve -lock=false || true' 
+                // Manually delete the local state file to allow 'terraform init' to run cleanly
+                bat 'del /f /q .\\terraform.tfstate || true' 
+                bat 'echo "Cleanup attempt complete."'
+            }
+        }
+
         stage('Build & Test (Optional)') {
             steps {
-                // Using 'bat' for Windows agent
                 bat 'echo "Skipping formal build/test for this project"'
+            }
+        }
+
+        stage('Apply Infrastructure (Terraform)') {
+             steps {
+                script {
+                    bat 'echo "Initializing Terraform"'
+                    bat 'terraform init' 
+                    
+                    bat 'echo "Applying Infrastructure"'
+                    bat 'terraform apply -auto-approve'
+
+                    // 💡 CRITICAL FIX: Get the Public DNS from Terraform output and set the variable
+                    def publicDns = sh(
+                        script: "terraform output -raw web_app_public_dns", 
+                        returnStdout: true
+                    ).trim()
+                    
+                    // Set the environment variable for the later deployment stage
+                    env.WEB_APP_HOST_DNS = publicDns
+                    
+                    echo "EC2 Host DNS is now dynamically set to: ${env.WEB_APP_HOST_DNS}"
+                }
             }
         }
 
@@ -48,22 +82,18 @@ pipeline {
                         
                         // 1. Authenticate Docker with ECR
                         echo 'Authenticating Docker with ECR...'
-                        // Using 'bat' for Windows agent
                         bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
                         // 2. Build the Docker Image
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                        // Using 'bat' for Windows agent
                         bat "docker build -t ${ECR_REPOSITORY} ."
                         
                         // 3. Tag the image for ECR
                         echo "Tagging image..."
-                        // Using 'bat' for Windows agent
                         bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
                         // 4. Push the image to ECR
                         echo "Pushing image to ECR..."
-                        // Using 'bat' for Windows agent
                         bat "docker push ${FULL_IMAGE_NAME}"
                     }
                 }
@@ -72,7 +102,8 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
-                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
+                // 💡 Use the dynamically set DNS
+                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_DNS}"
 
                 // 1. Create the deploy.sh script locally
                 script {
@@ -81,10 +112,8 @@ pipeline {
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# 🛑 CRITICAL FIX APPLIED HERE:
-# The command substitution is wrapped entirely to ensure the token is piped 
-# to 'docker login' and not executed as a command itself.
-\$(aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL)
+# 🛑 CRITICAL FIX: Correctly pipes the password to docker login.
+aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
 docker stop web-app-container || true
@@ -105,11 +134,12 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                 )]) {
                     
                     // SCP command to transfer the script
-                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
+                    // 💡 Use the DNS variable
+                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_DNS}:/home/${SSH_USER}/deploy.sh"
 
                     // SSH command to execute the script
-                    // 'bash -lc' is used to source the .bashrc file, ensuring AWS CLI and Docker are in PATH
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
+                    // 💡 Use the DNS variable
+                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_DNS} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
