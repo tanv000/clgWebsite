@@ -44,9 +44,8 @@ pipeline {
                         // Use the AWS CLI to fetch the IP value from the parameter store.
                         // '--output text' ensures clean output, and 'tr -d' removes any trailing newline.
                         def ip_address_raw = sh(
-                            script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text | tr -d '\\n'",
-                            returnStdout: true
-                        ).trim()
+                        // This relies only on the AWS CLI, and Groovy's trim() handles cleanup.
+                        script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text",returnStdout: true).trim()
                         
                         // Set the environment variable for subsequent stages
                         env.WEB_APP_HOST_IP = ip_address_raw
