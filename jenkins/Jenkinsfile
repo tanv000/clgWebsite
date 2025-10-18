@@ -13,8 +13,10 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        WEB_APP_HOST_IP = '' // Will be set dynamically
+        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
+        WEB_APP_HOST_IP = '3.109.4.173' 
         WEB_APP_HOST_USER = 'ec2-user'
+        // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
     }
 
@@ -28,15 +30,14 @@ pipeline {
 
         stage('Build & Test (Optional)') {
             steps {
+                // Using 'bat' for Windows agent
                 bat 'echo "Skipping formal build/test for this project"'
             }
         }
-        
-        // ✅ STANDARDS FIX: Consolidate all AWS-dependent steps into one stage.
-        stage('AWS Infrastructure and Image') {
+
+        stage('Docker Build & Push') {
             steps {
                 script {
-                    // Inject AWS credentials ONCE for all encapsulated steps (Docker & Terraform)
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
@@ -45,63 +46,70 @@ pipeline {
                         )
                     ]) {
                         
-                        // --- 1. Docker Build & Push (Uses AWS ECR) ---
+                        // 1. Authenticate Docker with ECR
                         echo 'Authenticating Docker with ECR...'
+                        // Using 'bat' for Windows agent
                         bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
+                        // 2. Build the Docker Image
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
+                        // Using 'bat' for Windows agent
                         bat "docker build -t ${ECR_REPOSITORY} ."
+                        
+                        // 3. Tag the image for ECR
+                        echo "Tagging image..."
+                        // Using 'bat' for Windows agent
                         bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
+                        // 4. Push the image to ECR
                         echo "Pushing image to ECR..."
+                        // Using 'bat' for Windows agent
                         bat "docker push ${FULL_IMAGE_NAME}"
-
-                        // --- 2. Terraform Init (Uses AWS Credentials) ---
-                        echo "Initializing Terraform backend..."
-                        dir('terraform') {
-                            bat 'terraform init'
-                        }
-                        
-                        // --- 3. Terraform Apply (Uses AWS Credentials) ---
-                        echo "Applying Terraform configuration to ensure resources and outputs exist..."
-                        dir('terraform') {
-                            bat 'terraform apply -auto-approve'
-                        }
-                        
-                        // --- 4. Get Host IP (Reads Terraform Output) ---
-                        echo "Retrieving dynamic host IP..."
-                        def host_ip = ''
-                        dir('terraform') {
-                            // Note: terraform output will succeed here because apply ran above
-                            bat 'terraform output -raw web_app_public_ip > host_ip.txt'
-                            host_ip = readFile('host_ip.txt').trim()
-                            bat 'del host_ip.txt' // Clean up temporary file
-                        }
-
-                        // Set the environment variable for the next stage
-                        env.WEB_APP_HOST_IP = host_ip
-                        echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
                     }
                 }
             }
-        } // End of AWS Infrastructure and Image stage
+        }
         
-        // This stage uses SSH keys, so it remains separate and clean.
         stage('Deploy to EC2') {
             steps {
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
-                
+
+                // 1. Create the deploy.sh script locally
+                script {
+                    writeFile file: 'deploy.sh', text: """#!/bin/bash
+# FIX: Relying on fixed environment PATH and attached IAM Role
+IMAGE_TAG="\$1" 
+IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
+
+# 🛑 CRITICAL FIX APPLIED HERE:
+# The command substitution is wrapped entirely to ensure the token is piped 
+# to 'docker login' and not executed as a command itself.
+\$(aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL)
+
+# Stop and remove the old container
+docker stop web-app-container || true
+docker rm web-app-container || true
+
+# Pull the latest image from ECR
+docker pull \$IMAGE_REPO_URL:\$IMAGE_TAG
+
+# Run the new container
+docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
+"""
+                }
+
                 withCredentials([sshUserPrivateKey(
                     credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
                     keyFileVariable: 'SSH_KEY_PATH', 
                     usernameVariable: 'SSH_USER'
                 )]) {
                     
-                    // 1. SCP command to transfer the external deploy.sh script
+                    // SCP command to transfer the script
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
-                    // 2. SSH command to execute the script on the remote (Linux) EC2 host
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"export AWS_REGION=${AWS_REGION} export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} export ECR_REPOSITORY=${ECR_REPOSITORY} && chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
+                    // SSH command to execute the script
+                    // 'bash -lc' is used to source the .bashrc file, ensuring AWS CLI and Docker are in PATH
+                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
         }
