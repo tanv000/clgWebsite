@@ -63,7 +63,7 @@ pipeline {
             }
         }
         
-        ## 🛠️ CRITICAL FIX 1: Ensure Terraform is Initialized to Read State
+        // 🛠️ CRITICAL FIX 1: Ensure Terraform is Initialized to Read State
         stage('Terraform Init') {
             steps {
                 script {
