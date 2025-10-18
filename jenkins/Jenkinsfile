@@ -29,15 +29,23 @@ pipeline {
         }
 
         stage('Destroy Previous Infrastructure (Local State Workaround)') {
-            // 🛑 CRITICAL FIX: The 'dir' block must be INSIDE 'steps'.
             steps { 
                 dir('terraform') { 
-                    bat 'echo "Attempting to destroy old infrastructure..."'
-                    // Use '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
-                    bat 'terraform destroy -auto-approve -lock=false || true' 
-                    // Delete the state file from the correct subdirectory
-                    bat 'del /f /q .\\terraform.tfstate || true' 
-                    bat 'echo "Cleanup attempt complete."'
+                    // 🛑 FIX: Use credentials for terraform destroy as well
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'AWS_ECR_CREDENTIALS', 
+                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                    ]) {
+                        bat 'echo "Attempting to destroy old infrastructure..."'
+                        // Use '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
+                        bat 'terraform destroy -auto-approve -lock=false || true' 
+                        // Delete the state file from the correct subdirectory
+                        bat 'del /f /q .\\terraform.tfstate || true' 
+                        bat 'echo "Cleanup attempt complete."'
+                    }
                 }
             }
         }
@@ -49,26 +57,34 @@ pipeline {
         }
 
         stage('Apply Infrastructure (Terraform)') {
-            // 🛑 CRITICAL FIX: The 'dir' block must be INSIDE 'steps'.
             steps {
                 dir('terraform') { 
-                    script {
-                        bat 'echo "Initializing Terraform"'
-                        bat 'terraform init' 
-                        
-                        bat 'echo "Applying Infrastructure"'
-                        bat 'terraform apply -auto-approve'
+                    // 🛑 FIX: Use credentials for terraform init/apply
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'AWS_ECR_CREDENTIALS', 
+                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                    ]) {
+                        script {
+                            bat 'echo "Initializing Terraform"'
+                            bat 'terraform init' 
+                            
+                            bat 'echo "Applying Infrastructure"'
+                            bat 'terraform apply -auto-approve'
 
-                        // Get the Public DNS from Terraform output
-                        def publicDns = sh(
-                            script: "terraform output -raw web_app_public_dns", 
-                            returnStdout: true
-                        ).trim()
-                        
-                        // Set the environment variable for the later deployment stage
-                        env.WEB_APP_HOST_DNS = publicDns
-                        
-                        echo "EC2 Host DNS is now dynamically set to: ${env.WEB_APP_HOST_DNS}"
+                            // Get the Public DNS from Terraform output
+                            def publicDns = sh(
+                                script: "terraform output -raw web_app_public_dns", 
+                                returnStdout: true
+                            ).trim()
+                            
+                            // Set the environment variable for the later deployment stage
+                            env.WEB_APP_HOST_DNS = publicDns
+                            
+                            echo "EC2 Host DNS is now dynamically set to: ${env.WEB_APP_HOST_DNS}"
+                        }
                     }
                 }
             }
