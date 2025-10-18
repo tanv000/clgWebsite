@@ -35,17 +35,6 @@ pipeline {
             }
         }
 
-        stage('Apply Infrastructure (Terraform)') {
-             steps {
-                 // Terraform relies on the local state file (terraform.tfstate) for tracking.
-                bat 'echo "Initializing Terraform"'
-                bat 'terraform init' 
-                
-                bat 'echo "Applying Infrastructure"'
-                bat 'terraform apply -auto-approve'
-            }
-        }
-
         stage('Docker Build & Push') {
             steps {
                 script {
@@ -87,13 +76,15 @@ pipeline {
 
                 // 1. Create the deploy.sh script locally
                 script {
-                 writeFile file: 'deploy.sh', text: """#!/bin/bash
+                    writeFile file: 'deploy.sh', text: """#!/bin/bash
 # FIX: Relying on fixed environment PATH and attached IAM Role
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# 🛑 CRITICAL FIX: The password is piped directly to docker login.
-aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+# 🛑 CRITICAL FIX APPLIED HERE:
+# The command substitution is wrapped entirely to ensure the token is piped 
+# to 'docker login' and not executed as a command itself.
+\$(aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL)
 
 # Stop and remove the old container
 docker stop web-app-container || true
