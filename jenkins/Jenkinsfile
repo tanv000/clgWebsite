@@ -27,11 +27,10 @@ pipeline {
             }
         }
         
-        // 🟢 FINAL FIXED STAGE: Uses PowerShell to capture clean AWS CLI output
+        // 🟢 CRITICAL FIX: Using a temporary file to capture clean output on Windows
         stage('Load Infra Details from SSM') {
             steps {
                 script {
-                    // Use withCredentials for AWS CLI access
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
@@ -41,12 +40,15 @@ pipeline {
                     ]) {
                         echo "Retrieving Host IP from SSM Parameter Store..."
                         
-                        // FIX: Use 'powershell -command' inside 'bat' to execute the AWS CLI.
-                        // PowerShell guarantees only the command output is returned, stripping the prompt text.
-                        def ip_address_raw = bat(
-                            script: 'powershell -command "aws ssm get-parameter --name /app/web/host-ip --region $env:AWS_REGION --query Parameter.Value --output text"',
-                            returnStdout: true
-                        ).trim()
+                        // 1. Use 'bat' to execute the AWS CLI and redirect the *clean* output to a file.
+                        // We revert to the simpler 'bat' command since we don't rely on returnStdout now.
+                        bat "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text > ip.txt"
+                        
+                        // 2. Read the clean content from the file into the Groovy variable.
+                        def ip_address_raw = readFile('ip.txt').trim()
+                        
+                        // 3. Clean up the temporary file.
+                        bat 'del ip.txt'
                         
                         // Set the environment variable for subsequent stages
                         env.WEB_APP_HOST_IP = ip_address_raw
@@ -56,7 +58,7 @@ pipeline {
                 }
             }
         }
-        // END FIXED STAGE
+        // END CRITICAL FIX
 
         stage('Build & Test (Optional)') {
             steps {
@@ -102,7 +104,7 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
-                // This stage uses the now-clean ${env.WEB_APP_HOST_IP}
+                // This stage now uses the CLEAN ${env.WEB_APP_HOST_IP}
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
                 // 1. Create the deploy.sh script locally
