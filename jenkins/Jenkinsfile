@@ -59,7 +59,7 @@ pipeline {
         stage('Apply Infrastructure (Terraform)') {
             steps {
                 dir('terraform') { 
-                    // 🛑 FIX: Use credentials for terraform init/apply
+                    // Use credentials for terraform init/apply
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
@@ -67,6 +67,7 @@ pipeline {
                             passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                         )
                     ]) {
+                        // We use a script block for Groovy logic (sh/bat output capture)
                         script {
                             bat 'echo "Initializing Terraform"'
                             bat 'terraform init' 
@@ -74,9 +75,10 @@ pipeline {
                             bat 'echo "Applying Infrastructure"'
                             bat 'terraform apply -auto-approve'
 
-                            // Get the Public DNS from Terraform output
-                            def publicDns = sh(
-                                script: "terraform output -raw web_app_public_dns", 
+                            // 🛑 ROBUST WINDOWS FIX: Capture the DNS output using the BAT shell
+                            // sh is used here because it is a portable Jenkins command that can execute shell/batch and capture output
+                            def publicDns = bat(
+                                script: 'terraform output -raw web_app_public_dns', 
                                 returnStdout: true
                             ).trim()
                             
