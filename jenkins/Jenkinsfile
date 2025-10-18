@@ -13,7 +13,7 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ❌ WEB_APP_HOST_IP IS NO LONGER HARDCODED HERE. It's set dynamically later.
+        // WEB_APP_HOST_IP is now set dynamically in the 'Load Infra Details from SSM' stage.
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -27,11 +27,11 @@ pipeline {
             }
         }
         
-        // 🟢 NEW STAGE: Dynamically load the EC2 IP from AWS SSM
+        // 🟢 FIXED STAGE: Using 'bat' for reliable credential passing on Windows agent
         stage('Load Infra Details from SSM') {
             steps {
                 script {
-                    // Use withCredentials for AWS CLI access (assuming 'AWS_ECR_CREDENTIALS' has SSM read access)
+                    // Use withCredentials for AWS CLI access
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'AWS_ECR_CREDENTIALS', 
@@ -41,11 +41,11 @@ pipeline {
                     ]) {
                         echo "Retrieving Host IP from SSM Parameter Store..."
                         
-                        // Use the AWS CLI to fetch the IP value from the parameter store.
-                        // '--output text' ensures clean output, and 'tr -d' removes any trailing newline.
-                        def ip_address_raw = sh(
-                        // This relies only on the AWS CLI, and Groovy's trim() handles cleanup.
-                        script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text",returnStdout: true).trim()
+                        // Use 'bat' to execute the AWS CLI command, ensuring it uses the temporary AWS credentials.
+                        def ip_address_raw = bat(
+                            script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text",
+                            returnStdout: true
+                        ).trim()
                         
                         // Set the environment variable for subsequent stages
                         env.WEB_APP_HOST_IP = ip_address_raw
@@ -55,7 +55,7 @@ pipeline {
                 }
             }
         }
-        // END NEW STAGE
+        // END FIXED STAGE
 
         stage('Build & Test (Optional)') {
             steps {
@@ -101,7 +101,7 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
-                // This stage now uses the dynamically set ${env.WEB_APP_HOST_IP}
+                // This stage uses the dynamically set ${env.WEB_APP_HOST_IP}
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
                 // 1. Create the deploy.sh script locally
