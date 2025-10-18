@@ -74,7 +74,7 @@ pipeline {
             }
         }
         
-        ## 🛠️ CRITICAL FIX 2: Dynamically read the EC2 IP using Windows 'bat' and file I/O
+        // CRITICAL FIX 2: Dynamically read the EC2 IP using Windows 'bat' and file I/O
         stage('Get Host IP') {
             steps {
                 script {
