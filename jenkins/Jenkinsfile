@@ -84,7 +84,7 @@ IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${
 # 🛑 CRITICAL FIX APPLIED HERE:
 # The command substitution is wrapped entirely to ensure the token is piped 
 # to 'docker login' and not executed as a command itself.
-\aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
+aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
 docker stop web-app-container || true
