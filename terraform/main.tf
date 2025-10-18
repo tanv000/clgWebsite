@@ -51,7 +51,7 @@ data "aws_route_table" "selected" {
 }
 
 # -----------------------------------------------------------------
-# 0a. CRITICAL FIX: Find Internet Gateway 🔍
+# 0a. CRITICAL FIX: Find Internet Gateway 
 # -----------------------------------------------------------------
 data "aws_internet_gateway" "selected" {
   filter {
@@ -61,7 +61,7 @@ data "aws_internet_gateway" "selected" {
 }
 
 # -----------------------------------------------------------------
-# 0b. CRITICAL FIX: Ensure correct public route to Internet Gateway 🌐
+# 0b. CRITICAL FIX: Ensure correct public route to Internet Gateway 
 # This explicitly creates the correct route to fix the connection timeout.
 # -----------------------------------------------------------------
 resource "aws_route" "public_internet_route" {
@@ -285,6 +285,8 @@ resource "aws_instance" "web_app_host" {
   }
 }
 
-output "web_app_public_ip" {
-  value = aws_instance.web_app_host.public_ip
+# 💡 CRITICAL FIX: Export the Public DNS Name for Jenkins to read dynamically
+output "web_app_public_dns" {
+  description = "The public DNS name of the Jenkins-Web-App-Host EC2 instance."
+  value = aws_instance.web_app_host.public_dns
 }
