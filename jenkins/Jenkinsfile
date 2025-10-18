@@ -13,8 +13,8 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
-        WEB_APP_HOST_IP = '3.109.132.59' 
+        // 🛑 REMOVE HARDCODED IP: Will be set dynamically in the 'Get Host IP' stage
+        WEB_APP_HOST_IP = '' 
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -66,6 +66,25 @@ pipeline {
                         // Using 'bat' for Windows agent
                         bat "docker push ${FULL_IMAGE_NAME}"
                     }
+                }
+            }
+        }
+        
+        // 🟢 NEW STAGE: Dynamically read the EC2 IP from Terraform output 
+        stage('Get Host IP') {
+            steps {
+                script {
+                    // IMPORTANT: Assumes 'terraform output' can be run successfully in the Jenkins workspace
+                    // '-raw' removes quotes, and '.trim()' removes whitespace/newlines.
+                    def host_ip = sh(
+                        returnStdout: true, 
+                        script: 'terraform output -raw web_app_public_ip'
+                    ).trim()
+                    
+                    // Set the retrieved IP as an environment variable for the deploy stage
+                    env.WEB_APP_HOST_IP = host_ip
+                    
+                    echo "✅ Retrieved dynamic host IP: ${env.WEB_APP_HOST_IP}"
                 }
             }
         }
