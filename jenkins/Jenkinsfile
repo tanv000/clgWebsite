@@ -13,8 +13,7 @@ pipeline {
         FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         // EC2 Host Settings 
-        // ✅ CRITICAL: Using the new IP from 'terraform apply' output
-        WEB_APP_HOST_IP = '65.2.141.152' 
+        // ❌ WEB_APP_HOST_IP IS NO LONGER HARDCODED HERE. It's set dynamically later.
         WEB_APP_HOST_USER = 'ec2-user'
         // Credential ID for the SSH Key stored in Jenkins (Username with private key)
         WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
@@ -27,6 +26,37 @@ pipeline {
                 checkout scm 
             }
         }
+        
+        // 🟢 NEW STAGE: Dynamically load the EC2 IP from AWS SSM
+        stage('Load Infra Details from SSM') {
+            steps {
+                script {
+                    // Use withCredentials for AWS CLI access (assuming 'AWS_ECR_CREDENTIALS' has SSM read access)
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'AWS_ECR_CREDENTIALS', 
+                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                    ]) {
+                        echo "Retrieving Host IP from SSM Parameter Store..."
+                        
+                        // Use the AWS CLI to fetch the IP value from the parameter store.
+                        // '--output text' ensures clean output, and 'tr -d' removes any trailing newline.
+                        def ip_address_raw = sh(
+                            script: "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text | tr -d '\\n'",
+                            returnStdout: true
+                        ).trim()
+                        
+                        // Set the environment variable for subsequent stages
+                        env.WEB_APP_HOST_IP = ip_address_raw
+                        
+                        echo "Dynamically loaded Host IP: ${env.WEB_APP_HOST_IP}"
+                    }
+                }
+            }
+        }
+        // END NEW STAGE
 
         stage('Build & Test (Optional)') {
             steps {
@@ -72,18 +102,17 @@ pipeline {
         
         stage('Deploy to EC2') {
             steps {
+                // This stage now uses the dynamically set ${env.WEB_APP_HOST_IP}
                 echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
 
                 // 1. Create the deploy.sh script locally
                 script {
                     writeFile file: 'deploy.sh', text: """#!/bin/bash
-# FIX: Relying on fixed environment PATH and attached IAM Role
+# Relying on fixed environment PATH and attached IAM Role
 IMAGE_TAG="\$1" 
 IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
 
-# 🛑 CRITICAL FIX APPLIED HERE:
-# The command substitution is wrapped entirely to ensure the token is piped 
-# to 'docker login' and not executed as a command itself.
+# Corrected ECR Login
 aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
 
 # Stop and remove the old container
@@ -108,7 +137,6 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // SSH command to execute the script
-                    // 'bash -lc' is used to source the .bashrc file, ensuring AWS CLI and Docker are in PATH
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }

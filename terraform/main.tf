@@ -288,3 +288,18 @@ resource "aws_instance" "web_app_host" {
 output "web_app_public_ip" {
   value = aws_instance.web_app_host.public_ip
 }
+
+# -----------------------------------------------------------------
+# 8. AWS Systems Manager (SSM) Parameter for Jenkins
+# -----------------------------------------------------------------
+
+resource "aws_ssm_parameter" "web_app_host_ip" {
+  # This path should be referenced in the Jenkinsfile
+  name  = "/app/web/host-ip" 
+  type  = "String"
+  value = aws_instance.web_app_host.public_ip
+  
+  tags = {
+    Name = "Web App Host IP"
+  }
+}
