@@ -29,14 +29,16 @@ pipeline {
         }
 
         stage('Destroy Previous Infrastructure (Local State Workaround)') {
-            steps {
-                // This step ensures the pipeline is repeatable without S3 remote state
-                bat 'echo "Attempting to destroy old infrastructure..."'
-                // Use '-lock=false' and '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
-                bat 'terraform destroy -auto-approve -lock=false || true' 
-                // Manually delete the local state file to allow 'terraform init' to run cleanly
-                bat 'del /f /q .\\terraform.tfstate || true' 
-                bat 'echo "Cleanup attempt complete."'
+            // 🛑 CRITICAL FIX: Running in the 'terraform' directory
+            dir('terraform') { 
+                steps {
+                    bat 'echo "Attempting to destroy old infrastructure..."'
+                    // Use '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
+                    bat 'terraform destroy -auto-approve -lock=false || true' 
+                    // Delete the state file from the correct subdirectory
+                    bat 'del /f /q .\\terraform.tfstate || true' 
+                    bat 'echo "Cleanup attempt complete."'
+                }
             }
         }
 
@@ -47,24 +49,27 @@ pipeline {
         }
 
         stage('Apply Infrastructure (Terraform)') {
-             steps {
-                script {
-                    bat 'echo "Initializing Terraform"'
-                    bat 'terraform init' 
-                    
-                    bat 'echo "Applying Infrastructure"'
-                    bat 'terraform apply -auto-approve'
+            // 🛑 CRITICAL FIX: Running in the 'terraform' directory
+            dir('terraform') { 
+                steps {
+                    script {
+                        bat 'echo "Initializing Terraform"'
+                        bat 'terraform init' 
+                        
+                        bat 'echo "Applying Infrastructure"'
+                        bat 'terraform apply -auto-approve'
 
-                    // 💡 CRITICAL FIX: Get the Public DNS from Terraform output and set the variable
-                    def publicDns = sh(
-                        script: "terraform output -raw web_app_public_dns", 
-                        returnStdout: true
-                    ).trim()
-                    
-                    // Set the environment variable for the later deployment stage
-                    env.WEB_APP_HOST_DNS = publicDns
-                    
-                    echo "EC2 Host DNS is now dynamically set to: ${env.WEB_APP_HOST_DNS}"
+                        // Get the Public DNS from Terraform output
+                        def publicDns = sh(
+                            script: "terraform output -raw web_app_public_dns", 
+                            returnStdout: true
+                        ).trim()
+                        
+                        // Set the environment variable for the later deployment stage
+                        env.WEB_APP_HOST_DNS = publicDns
+                        
+                        echo "EC2 Host DNS is now dynamically set to: ${env.WEB_APP_HOST_DNS}"
+                    }
                 }
             }
         }
@@ -134,11 +139,9 @@ docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
                 )]) {
                     
                     // SCP command to transfer the script
-                    // 💡 Use the DNS variable
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_DNS}:/home/${SSH_USER}/deploy.sh"
 
                     // SSH command to execute the script
-                    // 💡 Use the DNS variable
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_DNS} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }
