@@ -44,46 +44,51 @@ pipeline {
                     ]) {
                         
                         echo 'Authenticating Docker with ECR...'
-                        // Uses bat for Windows agent
                         bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
                         echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                        // Uses bat for Windows agent
                         bat "docker build -t ${ECR_REPOSITORY} ."
                         
                         echo "Tagging image..."
-                        // Uses bat for Windows agent
                         bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
 
                         echo "Pushing image to ECR..."
-                        // Uses bat for Windows agent
                         bat "docker push ${FULL_IMAGE_NAME}"
                     }
                 }
             }
         }
         
-        // 🛠️ CRITICAL FIX 1: Ensure Terraform is Initialized to Read State
+        // 🛠️ FIX 1: Ensure Terraform is Initialized by changing directory
         stage('Terraform Init') {
             steps {
                 script {
                     echo "Initializing Terraform backend..."
-                    // Use 'bat' for the Windows agent
-                    bat 'terraform init'
+                    // 🛑 CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
+                    dir('terraform') {
+                        bat 'terraform init'
+                    }
                 }
             }
         }
         
-        // CRITICAL FIX 2: Dynamically read the EC2 IP using Windows 'bat' and file I/O
+        // 🛠️ FIX 2: Dynamically read the EC2 IP using Windows 'bat' within the correct directory
         stage('Get Host IP') {
             steps {
                 script {
-                    // 1. Execute the Terraform command and redirect output to a file (Windows bat trick)
-                    bat 'terraform output -raw web_app_public_ip > host_ip.txt'
+                    def host_ip = ''
                     
-                    // 2. Read the content of the file into a Groovy variable
-                    // This is necessary because 'bat' cannot return output directly to a variable like 'sh'
-                    def host_ip = readFile('host_ip.txt').trim()
+                    // 🛑 CRITICAL FIX: Use 'dir' to navigate to the 'terraform' subdirectory
+                    dir('terraform') {
+                        // 1. Execute the Terraform command and redirect output to a file (Windows bat trick)
+                        bat 'terraform output -raw web_app_public_ip > host_ip.txt'
+                        
+                        // 2. Read the content of the file from the current directory (which is 'terraform')
+                        host_ip = readFile('host_ip.txt').trim()
+                        
+                        // Clean up the temporary file
+                        bat 'del host_ip.txt' 
+                    }
 
                     // 3. Set the environment variable
                     env.WEB_APP_HOST_IP = host_ip
@@ -106,11 +111,9 @@ pipeline {
                 )]) {
                     
                     // 1. SCP command to transfer the external deploy.sh script
-                    // This relies on scp.exe/ssh.exe being in the Windows agent's PATH (usually via Git/Msys)
                     sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
 
                     // 2. SSH command to execute the script on the remote (Linux) EC2 host
-                    // We explicitly export the necessary environment variables for the remote script to run.
                     sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"export AWS_REGION=${AWS_REGION} export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} export ECR_REPOSITORY=${ECR_REPOSITORY} && chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
                 }
             }

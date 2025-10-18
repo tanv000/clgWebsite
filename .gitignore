@@ -3,3 +3,5 @@
 terraform.tfstate.backup
 terraform.tfstate
 .terraform.tfstate.lock.info
+
+host_ip.txt
