@@ -29,9 +29,9 @@ pipeline {
         }
 
         stage('Destroy Previous Infrastructure (Local State Workaround)') {
-            // 🛑 CRITICAL FIX: Running in the 'terraform' directory
-            dir('terraform') { 
-                steps {
+            // 🛑 CRITICAL FIX: The 'dir' block must be INSIDE 'steps'.
+            steps { 
+                dir('terraform') { 
                     bat 'echo "Attempting to destroy old infrastructure..."'
                     // Use '|| true' to allow the pipeline to continue if destroy fails (e.g., first run)
                     bat 'terraform destroy -auto-approve -lock=false || true' 
@@ -49,9 +49,9 @@ pipeline {
         }
 
         stage('Apply Infrastructure (Terraform)') {
-            // 🛑 CRITICAL FIX: Running in the 'terraform' directory
-            dir('terraform') { 
-                steps {
+            // 🛑 CRITICAL FIX: The 'dir' block must be INSIDE 'steps'.
+            steps {
+                dir('terraform') { 
                     script {
                         bat 'echo "Initializing Terraform"'
                         bat 'terraform init' 
