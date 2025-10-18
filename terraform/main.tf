@@ -62,13 +62,16 @@ data "aws_internet_gateway" "selected" {
 
 # -----------------------------------------------------------------
 # 0b. CRITICAL FIX: Ensure correct public route to Internet Gateway 
-# This explicitly creates the correct route to fix the connection timeout.
+# NOTE: This block is the source of the RouteAlreadyExists error in default VPCs.
+#       Keep it commented out to fix your immediate pipeline failure.
 # -----------------------------------------------------------------
+/*
 resource "aws_route" "public_internet_route" {
-  route_table_id         = data.aws_route_table.selected.id # Use the ID of the main route table
+  route_table_id         = data.aws_route_table.selected.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = data.aws_internet_gateway.selected.id # Explicitly target the IGW ID
+  gateway_id             = data.aws_internet_gateway.selected.id
 }
+*/
 
 
 # -----------------------------------------------------------------
@@ -206,6 +209,9 @@ resource "aws_vpc_endpoint" "ecr_dkr_endpoint" {
 }
 
 # S3 Gateway Endpoint
+# NOTE: This block is the source of the S3 endpoint RouteAlreadyExists error.
+#       Keep it commented out to fix your immediate pipeline failure.
+/*
 resource "aws_vpc_endpoint" "s3_endpoint" {
   vpc_id            = data.aws_vpc.selected.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
@@ -213,6 +219,7 @@ resource "aws_vpc_endpoint" "s3_endpoint" {
   # Use the dynamically selected main route table
   route_table_ids = [data.aws_route_table.selected.id] 
 }
+*/
 
 
 # -----------------------------------------------------------------
@@ -228,7 +235,7 @@ resource "aws_instance" "web_app_host" {
   iam_instance_profile  = aws_iam_instance_profile.ec2_profile.name
   # Reference the dynamically selected Subnet ID 
   subnet_id             = data.aws_subnet.selected.id
-  # 🟢 Added: Ensures a public IP is explicitly assigned
+  # Added: Ensures a public IP is explicitly assigned
   associate_public_ip_address = true 
 
 
@@ -255,7 +262,7 @@ resource "aws_instance" "web_app_host" {
               echo 'export PATH=$PATH:/usr/local/bin:/usr/bin' >> /home/ec2-user/.bashrc
               sudo chown ec2-user:ec2-user /home/ec2-user/.bashrc
               
-              # 🛑 FINAL FIX: Configure OS Firewall (Firewalld and iptables) to allow HTTP 🛑
+              # FINAL FIX: Configure OS Firewall (Firewalld and iptables) to allow HTTP 
               
               # Attempt to configure Firewalld (Standard for modern Amazon Linux/CentOS)
               if command -v firewall-cmd &> /dev/null
@@ -285,8 +292,12 @@ resource "aws_instance" "web_app_host" {
   }
 }
 
-# 💡 CRITICAL FIX: Export the Public DNS Name for Jenkins to read dynamically
+// OUTPUT 1: The Public DNS name (Used for deployment)
 output "web_app_public_dns" {
-  description = "The public DNS name of the Jenkins-Web-App-Host EC2 instance."
   value = aws_instance.web_app_host.public_dns
+}
+
+// OUTPUT 2: The Public IP Address (For reference/testing)
+output "web_app_public_ip" {
+  value = aws_instance.web_app_host.public_ip
 }
