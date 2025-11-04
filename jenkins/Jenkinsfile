@@ -1,147 +1,91 @@
-// -----------------------------------------------------------------------------
-// Jenkins Pipeline for CI/CD of abc-college-web-app
-// -----------------------------------------------------------------------------
 pipeline {
     agent any
 
     environment {
-        // AWS ECR Settings 
-        AWS_REGION      = 'ap-south-1'
-        AWS_ACCOUNT_ID  = '708972351530'
-        ECR_REPOSITORY  = 'abc-college-web-app'
-        IMAGE_TAG       = "latest"
-        FULL_IMAGE_NAME = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
-
-        // EC2 Host Settings 
-        // WEB_APP_HOST_IP is now set dynamically in the 'Load Infra Details from SSM' stage.
-        WEB_APP_HOST_USER = 'ec2-user'
-        // Credential ID for the SSH Key stored in Jenkins (Username with private key)
-        WEB_APP_HOST_SSH_CREDENTIAL_ID = 'WEB_APP_HOST_SSH' 
+        IMAGE_NAME = "website"
+        REGION     = "ap-south-1"
+        AWS_CLI    = "C:\\Program Files\\Amazon\\AWSCLI\\bin\\aws.exe"
+        TERRAFORM  = "C:\\Terraform\\terraform.exe"
     }
 
     stages {
-        stage('SCM Checkout') {
+
+        stage('Clone Repository') {
             steps {
                 echo 'Cloning repository...'
-                checkout scm 
+                git branch: 'main', url: 'https://github.com/tanv000/End_to_End_DevOps_Pipeline_Implementation.git'
             }
         }
-        
-        // 🟢 CRITICAL FIX: Using a temporary file to capture clean output on Windows
-        stage('Load Infra Details from SSM') {
+
+        stage('Provision ECR via Terraform') {
             steps {
-                script {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'AWS_ECR_CREDENTIALS', 
-                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
-                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                        )
-                    ]) {
-                        echo "Retrieving Host IP from SSM Parameter Store..."
-                        
-                        // 1. Use 'bat' to execute the AWS CLI and redirect the *clean* output to a file.
-                        // We revert to the simpler 'bat' command since we don't rely on returnStdout now.
-                        bat "aws ssm get-parameter --name /app/web/host-ip --region ${env.AWS_REGION} --query Parameter.Value --output text > ip.txt"
-                        
-                        // 2. Read the clean content from the file into the Groovy variable.
-                        def ip_address_raw = readFile('ip.txt').trim()
-                        
-                        // 3. Clean up the temporary file.
-                        bat 'del ip.txt'
-                        
-                        // Set the environment variable for subsequent stages
-                        env.WEB_APP_HOST_IP = ip_address_raw
-                        
-                        echo "Dynamically loaded Host IP: ${env.WEB_APP_HOST_IP}"
+                echo 'Provisioning AWS ECR Repository...'
+                withCredentials([usernamePassword(credentialsId: 'AWS_ECR_CREDENTIALS', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        bat """
+                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                        "%TERRAFORM%" init
+                        "%TERRAFORM%" apply -auto-approve -target=aws_ecr_repository.website
+                        """
                     }
                 }
             }
         }
-        // END CRITICAL FIX
 
-        stage('Build & Test (Optional)') {
+        stage('Build Docker Image') {
             steps {
-                // Using 'bat' for Windows agent
-                bat 'echo "Skipping formal build/test for this project"'
+                echo 'Building Docker image...'
+                bat 'docker build -t %IMAGE_NAME%:latest .'
             }
         }
 
-        stage('Docker Build & Push') {
+        stage('Push to AWS ECR') {
             steps {
-                script {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'AWS_ECR_CREDENTIALS', 
-                            usernameVariable: 'AWS_ACCESS_KEY_ID', 
-                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                        )
-                    ]) {
-                        
-                        // 1. Authenticate Docker with ECR
-                        echo 'Authenticating Docker with ECR...'
-                        // Using 'bat' for Windows agent
-                        bat "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                echo 'Pushing image to ECR...'
+                withCredentials([usernamePassword(credentialsId: 'AWS_ECR_CREDENTIALS', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        script {
+                            // Get ECR repo URL dynamically from Terraform output
+                            def ecr_repo = bat(script: "\"%TERRAFORM%\" output -raw ecr_repo_url", returnStdout: true).trim()
+                            env.ECR_REPO = ecr_repo
+                        }
+                    }
 
-                        // 2. Build the Docker Image
-                        echo "Building Docker image: ${FULL_IMAGE_NAME}"
-                        // Using 'bat' for Windows agent
-                        bat "docker build -t ${ECR_REPOSITORY} ."
-                        
-                        // 3. Tag the image for ECR
-                        echo "Tagging image..."
-                        // Using 'bat' for Windows agent
-                        bat "docker tag ${ECR_REPOSITORY}:latest ${FULL_IMAGE_NAME}"
+                    bat """
+                    set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                    set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                    "%AWS_CLI%" ecr get-login-password --region %REGION% | docker login --username AWS --password-stdin %ECR_REPO%
+                    docker tag %IMAGE_NAME%:latest %ECR_REPO%:latest
+                    docker push %ECR_REPO%:latest
+                    """
+                }
+            }
+        }
 
-                        // 4. Push the image to ECR
-                        echo "Pushing image to ECR..."
-                        // Using 'bat' for Windows agent
-                        bat "docker push ${FULL_IMAGE_NAME}"
+        stage('Deploy EC2 with Terraform') {
+            steps {
+                echo 'Deploying EC2 instance and running Docker container...'
+                withCredentials([usernamePassword(credentialsId: 'AWS_ECR_CREDENTIALS', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        bat """
+                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                        "%TERRAFORM%" apply -auto-approve
+                        """
                     }
                 }
             }
         }
-        
-        stage('Deploy to EC2') {
-            steps {
-                // This stage now uses the CLEAN ${env.WEB_APP_HOST_IP}
-                echo "Deploying to EC2 host: ${env.WEB_APP_HOST_IP}"
+    }
 
-                // 1. Create the deploy.sh script locally
-                script {
-                    writeFile file: 'deploy.sh', text: """#!/bin/bash
-# Relying on fixed environment PATH and attached IAM Role
-IMAGE_TAG="\$1" 
-IMAGE_REPO_URL="${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}"
-
-# Corrected ECR Login
-aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin \$IMAGE_REPO_URL
-
-# Stop and remove the old container
-docker stop web-app-container || true
-docker rm web-app-container || true
-
-# Pull the latest image from ECR
-docker pull \$IMAGE_REPO_URL:\$IMAGE_TAG
-
-# Run the new container
-docker run -d -p 80:80 --name web-app-container \$IMAGE_REPO_URL:\$IMAGE_TAG
-"""
-                }
-
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: env.WEB_APP_HOST_SSH_CREDENTIAL_ID, 
-                    keyFileVariable: 'SSH_KEY_PATH', 
-                    usernameVariable: 'SSH_USER'
-                )]) {
-                    
-                    // SCP command to transfer the script
-                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" deploy.sh ${SSH_USER}@${env.WEB_APP_HOST_IP}:/home/${SSH_USER}/deploy.sh"
-
-                    // SSH command to execute the script
-                    sh "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i \"${SSH_KEY_PATH}\" ${SSH_USER}@${env.WEB_APP_HOST_IP} 'bash -lc \"chmod +x /home/${SSH_USER}/deploy.sh && /home/${SSH_USER}/deploy.sh ${IMAGE_TAG}\"'"
-                }
-            }
+    post {
+        success {
+            echo '✅ Docker image pushed, EC2 deployed, and website running!'
+            echo '🌐 Open the site using the EC2 Public IP or DNS from Terraform outputs.'
+        }
+        failure {
+            echo '❌ Build or deployment failed!'
         }
     }
 }
