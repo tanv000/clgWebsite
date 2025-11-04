@@ -6,7 +6,7 @@ provider "aws" {
 # ECR Repository (dynamic creation)
 # ------------------------------
 resource "aws_ecr_repository" "website" {
-  name = "website"
+  name = "travelscape-repo"
 }
 
 # ------------------------------
