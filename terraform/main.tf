@@ -118,6 +118,6 @@ resource "aws_instance" "web" {
               EOF
 
   tags = {
-    Name = "Website-EC2"
+    Name = "TravelScape-Website-EC2"
   }
 }
