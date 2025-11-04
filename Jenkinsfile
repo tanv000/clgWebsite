@@ -49,9 +49,10 @@ pipeline {
                             // Get ECR repo URL dynamically from Terraform output
                             def ecr_repo = bat(script: "\"%TERRAFORM%\" output -raw ecr_repo_url", returnStdout: true).trim()
                             env.ECR_REPO = ecr_repo
+                            echo "Using ECR repo: ${env.ECR_REPO}"
                         }
                     }
-
+        
                     bat """
                     set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
                     set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
@@ -62,6 +63,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Deploy EC2 with Terraform') {
             steps {
