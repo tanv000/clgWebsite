@@ -1,13 +1,3 @@
-terraform {
-  backend "s3" {
-    bucket         = "travelscape-terraform-state"       # your S3 bucket name
-    key            = "devops/terraform.tfstate"          # folder path inside bucket
-    region         = "ap-south-1"
-    dynamodb_table = "terraform-locks"                   # optional but recommended
-    encrypt        = true
-  }
-}
-
 provider "aws" {
   region = var.region
 }
