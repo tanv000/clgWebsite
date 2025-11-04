@@ -1,103 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="description" content="ABC College - Home" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ABC College | Home</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TravelScape – Tanvi’s Travel Blog</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <img src="assets/logo.png" alt="ABC College Logo" width="56" height="56" />
-  <h1>TABC College</h1>
-  <nav>
-    <a href="index.html">Home</a> |
-    <a href="about.html">About</a> |
-    <a href="departments.html">Departments</a> |
-    <a href="courses.html">Courses</a> |
-    <a href="admissions.html">Admissions</a> |
-    <a href="events.html">Events</a> |
-    <a href="placements.html">Placements</a> |
-    <a href="faculty.html">Faculty</a> |
-    <a href="contact.html">Contact</a>
-  </nav>
-  <hr />
-</header>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">TravelScape</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="about.html">About</a>
+        <a href="contact.html">Contact</a>
+      </nav>
+    </div>
+  </header>
 
-<main>
-  <section>
-    <h2>Welcome To ABC</h2>
-    <figure>
-      <img src="assets/campus_hero.jpg" alt="ABC College Main Campus" />
-      <figcaption>Our campus fosters collaboration and curiosity.</figcaption>
-    </figure>
-    <p>Established in <strong>1990</strong>, ABC College offers undergraduate and postgraduate programs across Science, Commerce, Arts, and Management.</p>
-    <p>Open hours: <time datetime="09:00">9 AM</time> to <time datetime="17:00">5 PM</time>, Mon–Fri.</p>
-  </section>
+  <main>
+    <section class="hero">
+      <div class="container hero-inner">
+        <h1>Wander. Capture. Remember.</h1>
+        <p>Travel stories from Coorg, Ooty, Isha Foundation, and Coonoor.</p>
+      </div>
+    </section>
 
-  <section>
-    <h2>Quick Facts</h2>
-    <ul>
-      <!-- TODO(1): Add two more <li> items exactly as specified -->
-      <li>NAAC accredited with <mark>A+</mark> grade</li>
-      <!-- TODO(1A) -->
-       <li>Over 6,000 students and 250 faculty members</li>
-      <!-- TODO(1B) -->
-       <li>Strong Industry and research collaboration</li>
-    </ul>
-  </section>
+    <section class="container posts">
+      <article class="card">
+        <img src="images/coorg.png" alt="Coorg">
+        <div class="card-body">
+          <h2>Coorg 🌿</h2>
+          <p>Misty hills, coffee plantations, and cascading waterfalls — Coorg feels like peace in motion.</p>
+        </div>
+      </article>
 
-  <section>
-    <h2>At a Glance</h2>
-    <table border="1" cellpadding="6">
-      <caption>Key Statistics</caption>
-      <thead>
-        <!-- TODO(2): Add header cells exactly as specified -->
-        <tr>
-          <!-- TODO(2A) -->
-           <th>Metric</th>
-          <!-- TODO(2B) -->
-           <th>Value</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- TODO(3): Add three rows exactly as specified -->
-        <!-- TODO(3A) -->
-         <tr>
-            <td>Departments</td>
-            <td>12</td>
-         </tr>
-        <!-- TODO(3B) -->
-         <tr>
-            <td>Programs</td>
-            <td>35</td>
-         </tr>
-        <!-- TODO(3C) -->
-         <tr>
-            <td>Clubs</td>
-            <td>22</td>
-         </tr>
-      </tbody>
-    </table>
-  </section>
+      <article class="card">
+        <img src="images/ooty.png" alt="Ooty">
+        <div class="card-body">
+          <h2>Ooty 🌸</h2>
+          <p>Tea estates, cool breezes, and the nostalgic charm of the Nilgiri toy train.</p>
+        </div>
+      </article>
 
-  <section>
-    <h2>Campus Tour (Optional Video)</h2>
-    <video width="640" controls>
-      <!-- TODO(4): Add <source> element exactly as specified -->
-      <!-- TODO(4A) -->
-       <source src="assets/campus.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
-    <p><small>Place a real <code>campus.mp4</code> in <code>assets/</code> to enable playback.</small></p>
-  </section>
-</main>
+      <article class="card">
+        <img src="images/isha.png" alt="Isha Foundation">
+        <div class="card-body">
+          <h2>Isha Foundation 🕉️</h2>
+          <p>Serene spaces surrounded by mountains and the inspiring presence of Adiyogi.</p>
+        </div>
+      </article>
 
-<footer>
-  <hr />
-  <address>ABC College, Knowledge Avenue, Hyderabad, India • +91-40-1234-5678</address>
-  <p>&copy; 2025 ABC College. All rights reserved.</p>
-</footer>
+      <article class="card">
+        <img src="images/coonoor.png" alt="Coonoor">
+        <div class="card-body">
+          <h2>Coonoor ☕</h2>
+          <p>Gentle hills and fresh air — where every road turns into a beautiful frame.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="container about-blurb">
+      <h3>About This Blog</h3>
+      <p>TravelScape captures my journeys across serene landscapes and quiet getaways. Each post is a glimpse of the calm I found along the way.</p>
+      <p><a class="btn" href="about.html">Read More</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2025 Tanvi’s TravelScape | <a href="contact.html">Contact</a></p>
+    </div>
+  </footer>
 </body>
 </html>

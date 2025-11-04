@@ -1,65 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="description" content="ABC College - About" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ABC College | About</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>About – TravelScape</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <img src="assets/logo.png" alt="ABC College Logo" width="56" height="56" />
-  <h1>ABC College</h1>
-  <nav>
-    <a href="index.html">Home</a> |
-    <a href="about.html">About</a> |
-    <a href="departments.html">Departments</a> |
-    <a href="courses.html">Courses</a> |
-    <a href="admissions.html">Admissions</a> |
-    <a href="events.html">Events</a> |
-    <a href="placements.html">Placements</a> |
-    <a href="faculty.html">Faculty</a> |
-    <a href="contact.html">Contact</a>
-  </nav>
-  <hr />
-</header>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">TravelScape</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="about.html">About</a>
+        <a href="contact.html">Contact</a>
+      </nav>
+    </div>
+  </header>
 
-<main>
-  <section>
-    <h2>About the College</h2>
-    <figure>
-      <img src="assets/principal.jpg" alt="Principal's Message" />
-      <figcaption>Leadership committed to excellence.</figcaption>
-    </figure>
-    <!-- TODO(5): Add Vision and Mission paragraphs exactly as specified -->
-    <!-- TODO(5A) -->
-     <p>Vision: <i>"Empower learners to solve real-world problems"</i> </p>
-     
-    <!-- TODO(5B) -->
-     <p>Mission: Foster <i>curiosity</i>, <strong>competence</strong> and <i>character</i></p>
-  </section>
+  <main class="container page">
+    <h1>About Me</h1>
+    <div class="about-grid">
+      <img src="images/coorg.png" alt="Tanvi exploring Coorg">
+      <div>
+        <p>Hello! I'm <b>Tanvi</b> — a traveler who loves exploring calm destinations like Coorg, Ooty, and Coonoor. TravelScape is my way of sharing the moments and emotions I capture during my journeys.</p>
+        <p>This blog also served as a practice project for me to learn and implement <b>DevOps automation</b> and static web deployment pipelines.</p>
+      </div>
+    </div>
+  </main>
 
-  <section>
-    <h2>Leadership</h2>
-    <!-- TODO(6): Add two <details> blocks exactly as specified -->
-    <!-- TODO(6A) -->
-     <details>
-        <summary>Principal's Message</summary>
-        <p>Our college is committed to nurturing talent and embracing diversity, ensuring that every student has the opportunity to grow and thrive in a supportive environment.</p>
-     </details>
-    <!-- TODO(6B) -->
-     <details>
-        <summary>Dean (Academics)</summary>
-        <p>We provide a current and rigorous curriculum designed to challenge students, preparing them with the knowledge and skills needed to excel in their academic and professional pursuits.</p>
-     </details>
-  </section>
-</main>
-
-<footer>
-  <hr />
-  <address>ABC College, Knowledge Avenue, Hyderabad, India • +91-40-1234-5678</address>
-  <p>&copy; 2025 ABC College. All rights reserved.</p>
-</footer>
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2025 Tanvi’s TravelScape</p>
+    </div>
+  </footer>
 </body>
 </html>
