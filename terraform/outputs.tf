@@ -1,19 +1,14 @@
-output "ecr_repo_url" {
-  value       = aws_ecr_repository.website.repository_url
-  description = "ECR repository URL"
-}
-
 output "ec2_public_ip" {
+  description = "Public IP of the EC2 instance"
   value       = aws_instance.web.public_ip
-  description = "EC2 Public IP"
 }
 
 output "ec2_public_dns" {
+  description = "Public DNS of the EC2 instance"
   value       = aws_instance.web.public_dns
-  description = "EC2 Public DNS"
 }
 
 output "ec2_instance_id" {
+  description = "Instance ID"
   value       = aws_instance.web.id
-  description = "EC2 Instance ID"
 }

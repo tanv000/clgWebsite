@@ -2,28 +2,22 @@ provider "aws" {
   region = var.region
 }
 
-
-provider "aws" {
-  region = var.region
-}
-
 # ------------------------------
-# ECR Repository (dynamic creation)
-# ------------------------------
-resource "aws_ecr_repository" "website" {
-  name = "travelscape-repo"
-}
-
-# ------------------------------
-# IAM Role for EC2
+# IAM Role for EC2 to Access ECR
 # ------------------------------
 resource "aws_iam_role" "ec2_role" {
   name = "ec2-ecr-access-role"
+
+  lifecycle {
+    prevent_destroy = false
+    ignore_changes = all
+  }
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
       Principal = {
         Service = "ec2.amazonaws.com"
       }
@@ -80,18 +74,21 @@ resource "aws_security_group" "web_sg" {
 }
 
 # ------------------------------
-# Amazon Linux 2 AMI
+# Latest Amazon Linux 2 AMI
 # ------------------------------
 data "aws_ami" "amazon_linux" {
   most_recent = true
+
   filter {
     name   = "name"
     values = ["amzn2-ami-hvm-*-x86_64-gp2"]
   }
+
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+
   owners = ["amazon"]
 }
 
@@ -99,30 +96,46 @@ data "aws_ami" "amazon_linux" {
 # EC2 Instance
 # ------------------------------
 resource "aws_instance" "web" {
-  ami                  = data.aws_ami.amazon_linux.id
-  instance_type        = var.instance_type
-  key_name             = var.key_name
-  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
-  security_groups      = [aws_security_group.web_sg.name]
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type           = var.instance_type
+  key_name                = var.key_name
+  iam_instance_profile    = aws_iam_instance_profile.ec2_profile.name
+  security_groups         = [aws_security_group.web_sg.name]
 
   user_data = <<-EOF
               #!/bin/bash
+              # Update and install Docker
               yum update -y
               amazon-linux-extras install docker -y
+
+              # Enable Docker on boot
               systemctl enable docker
               systemctl start docker
+
+              # Add ec2-user to Docker group
               usermod -a -G docker ec2-user
+
+              # Wait for Docker to start
               sleep 20
 
+              # ECR login, pull image, and run container
               REGION=${var.region}
-              REPO=${aws_ecr_repository.website.repository_url}:latest
+              REPO=${var.ecr_repo_url}
 
               aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPO
               docker pull $REPO
+
+              # Stop existing container if any
+              if [ $(docker ps -q -f name= website) ]; then
+                docker stop website
+                docker rm website
+              fi
+
+              # Run container
               docker run -d --name website -p 80:80 $REPO
               EOF
 
   tags = {
-    Name = "TravelScape-Website-EC2"
+    Name = "Website-EC2"
   }
 }
