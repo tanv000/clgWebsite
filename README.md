@@ -28,9 +28,9 @@ It demonstrates continuous integration, delivery, and infrastructure automation 
 
 ## Manual ECR Setup (Before Pipeline)
 1. Open **AWS Console → ECR → Create Repository**.  
-2. Name: `website` → Visibility: Private → Create.  
+2. Name: `<ecr-name>` → Visibility: Private → Create.  
 3. Copy URI (e.g.,  
-   `708972351530.dkr.ecr.ap-south-1.amazonaws.com/website`).  
+   `XXXXXXXXXXXX.dkr.ecr.<region>.amazonaws.com/<ecr-name>`).  
 4. Update this URI in:
    - `Jenkinsfile` → `ECR_REPO`
    - `variables.tf` → `ecr_repo_url`
